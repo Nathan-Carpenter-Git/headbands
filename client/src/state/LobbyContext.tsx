@@ -22,6 +22,19 @@ function defaultWsUrl(): string {
 
 const WS_URL = import.meta.env.VITE_WS_URL || defaultWsUrl();
 
+// Render's free tier spins a service down after 15 minutes without inbound HTTP traffic, which
+// would wipe every lobby. While anyone is in a lobby, their browser pings the server's health
+// endpoint well inside that window; one active player is enough to keep everyone's game alive.
+const KEEP_ALIVE_INTERVAL_MS = 4 * 60_000;
+
+function healthUrl(): string {
+  const url = new URL(WS_URL);
+  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+  url.pathname = "/health";
+  url.search = "";
+  return url.toString();
+}
+
 export function LobbyProvider({ children }: { children: ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null);
   // Tracked outside React state purely to detect transitions (someone joined, a round just
@@ -179,6 +192,17 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
       wsRef.current?.close();
     };
   }, [resetLocalState]);
+
+  const inLobby = lobby !== null;
+  useEffect(() => {
+    if (!inLobby) return;
+    const timer = setInterval(() => {
+      // no-cors: we only need the request to reach the server (including cross-origin in dev),
+      // not to read the response.
+      fetch(healthUrl(), { mode: "no-cors", cache: "no-store" }).catch(() => {});
+    }, KEEP_ALIVE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [inLobby]);
 
   const send = useCallback((message: ClientMessage) => {
     wsRef.current?.send(JSON.stringify(message));

@@ -617,6 +617,11 @@ input {
   color: #ffffff;
 }
 
+.badge-warning {
+  background: var(--color-amber);
+  color: #1c1a15;
+}
+
 /* ---------- Category list ---------- */
 
 .category-list {

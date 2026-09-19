@@ -23,7 +23,11 @@ interface Player {
   name: string;
   isLeader: boolean;
   score: number;
-  ws: WebSocket;
+  /** A secret only this player's client knows, used to reclaim their seat after a reconnect. */
+  token: string;
+  /** Null while they're within the reconnect grace period after a dropped connection. */
+  ws: WebSocket | null;
+  connected: boolean;
 }
 
 interface RoundPlayer {
@@ -61,23 +65,24 @@ export class LobbyManager {
     return this.lobbies.get(code.toUpperCase());
   }
 
-  createLobby(playerName: string, ws: WebSocket): { lobby: Lobby; playerId: string } {
+  createLobby(playerName: string, ws: WebSocket): { lobby: Lobby; playerId: string; token: string } {
     const name = this.validatePlayerName(playerName);
     const code = generateLobbyCode((c) => this.lobbies.has(c));
     const playerId = randomUUID();
+    const token = randomUUID();
     const lobby: Lobby = {
       code,
       phase: "lobby",
-      players: new Map([[playerId, { id: playerId, name, isLeader: true, score: 0, ws }]]),
+      players: new Map([[playerId, { id: playerId, name, isLeader: true, score: 0, token, ws, connected: true }]]),
       settings: { ...DEFAULT_SETTINGS },
       game: null,
       customCategories: new Map(),
     };
     this.lobbies.set(code, lobby);
-    return { lobby, playerId };
+    return { lobby, playerId, token };
   }
 
-  joinLobby(code: string, playerName: string, ws: WebSocket): { lobby: Lobby; playerId: string } {
+  joinLobby(code: string, playerName: string, ws: WebSocket): { lobby: Lobby; playerId: string; token: string } {
     const name = this.validatePlayerName(playerName);
     const lobby = this.lobbies.get(code.toUpperCase());
     if (!lobby) {
@@ -87,8 +92,36 @@ export class LobbyManager {
       throw new LobbyError("A round is in progress, wait for it to finish before joining");
     }
     const playerId = randomUUID();
-    lobby.players.set(playerId, { id: playerId, name, isLeader: false, score: 0, ws });
-    return { lobby, playerId };
+    const token = randomUUID();
+    lobby.players.set(playerId, { id: playerId, name, isLeader: false, score: 0, token, ws, connected: true });
+    return { lobby, playerId, token };
+  }
+
+  /** Reattaches a new connection to an existing player record after a dropped connection. */
+  resumeSession(code: string, playerId: string, token: string, ws: WebSocket): Lobby {
+    const lobby = this.lobbies.get(code.toUpperCase());
+    if (!lobby) {
+      throw new LobbyError("That lobby no longer exists");
+    }
+    const player = lobby.players.get(playerId);
+    if (!player || player.token !== token) {
+      throw new LobbyError("Couldn't resume that session");
+    }
+    player.ws = ws;
+    player.connected = true;
+    return lobby;
+  }
+
+  /**
+   * Marks a player as disconnected without removing them, so a reconnect within the grace
+   * period (handled by the caller) can reclaim their seat, score, and place mid-round instead
+   * of losing it to a brief network drop or a locked phone.
+   */
+  markDisconnected(lobby: Lobby, playerId: string): void {
+    const player = lobby.players.get(playerId);
+    if (!player) return;
+    player.ws = null;
+    player.connected = false;
   }
 
   updateSettings(lobby: Lobby, playerId: string, settings: Partial<LobbySettingsDTO>): void {
@@ -218,7 +251,7 @@ export class LobbyManager {
       phase: lobby.phase,
       settings: lobby.settings,
       players: [...lobby.players.values()].map(
-        (p): PlayerDTO => ({ id: p.id, name: p.name, isLeader: p.isLeader, score: p.score }),
+        (p): PlayerDTO => ({ id: p.id, name: p.name, isLeader: p.isLeader, score: p.score, connected: p.connected }),
       ),
     };
   }
@@ -237,6 +270,7 @@ export class LobbyManager {
           revealed: rp.revealed,
           place: rp.place,
           card: id === forPlayerId && !rp.revealed ? null : rp.card,
+          connected: lobby.players.get(id)?.connected ?? false,
         }),
       ),
     };
@@ -267,42 +301,35 @@ export class LobbyManager {
     return [...lobby.customCategories.values()].map((c) => ({ id: c.id, name: c.name, cardCount: c.cards.length }));
   }
 
+  private sendTo(player: Player, message: unknown): void {
+    if (player.ws && player.ws.readyState === player.ws.OPEN) {
+      player.ws.send(JSON.stringify(message));
+    }
+  }
+
   broadcast(lobby: Lobby): void {
-    const dto = this.toDTO(lobby);
-    const payload = JSON.stringify({ type: "lobbyState", lobby: dto });
+    const lobbyDto = this.toDTO(lobby);
     for (const player of lobby.players.values()) {
-      if (player.ws.readyState === player.ws.OPEN) {
-        player.ws.send(payload);
-      }
+      this.sendTo(player, { type: "lobbyState", lobby: lobbyDto });
     }
   }
 
   /** Sends the full game-state picture (lobby state, custom categories, plus round/results state as applicable) to everyone. */
   broadcastGameState(lobby: Lobby): void {
     this.broadcast(lobby);
-    const customCategoriesPayload = JSON.stringify({
-      type: "customCategories",
-      categories: this.toCustomCategoriesDTO(lobby),
-    });
+    const customCategories = this.toCustomCategoriesDTO(lobby);
     for (const player of lobby.players.values()) {
-      if (player.ws.readyState === player.ws.OPEN) {
-        player.ws.send(customCategoriesPayload);
-      }
+      this.sendTo(player, { type: "customCategories", categories: customCategories });
     }
     if (lobby.phase === "round" && lobby.game) {
       for (const player of lobby.players.values()) {
-        if (player.ws.readyState !== player.ws.OPEN) continue;
-        const round = this.toRoundStateDTO(lobby, player.id);
-        player.ws.send(JSON.stringify({ type: "roundState", round }));
+        this.sendTo(player, { type: "roundState", round: this.toRoundStateDTO(lobby, player.id) });
       }
     }
     if (lobby.phase === "results" && lobby.game) {
       const results = this.toRoundResultsDTO(lobby);
-      const payload = JSON.stringify({ type: "roundResults", results });
       for (const player of lobby.players.values()) {
-        if (player.ws.readyState === player.ws.OPEN) {
-          player.ws.send(payload);
-        }
+        this.sendTo(player, { type: "roundResults", results });
       }
     }
   }

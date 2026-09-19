@@ -23,11 +23,16 @@ Custom categories are stored client-side, in the browser's local storage, so a p
 - Anyone with the link can join the lobby as a player.
 - The party leader configures game settings before starting: category or category playlist, number of rounds, and the auto reveal behavior described below.
 - Only the party leader can start the game.
+- A player who drops (locked phone, backgrounded tab, brief network loss) keeps their seat, score, and mid-round place for a two minute grace period.
+  Other players see them marked as reconnecting.
+  Their browser keeps a per-lobby session token in local storage and uses it to resume the same seat on reconnect, including after a full page reload.
+  If they don't return in time, they're removed from the lobby and the round carries on without them.
 
 ### Categories and cards
 
 - A category is a named set of text only cards (no images, no content filtering needed).
-- The app ships with a set of base categories covering a mix of everyday topics (animals, movies, occupations, sports, food, fictional characters, and more).
+- The app ships with 15 base categories covering a mix of everyday topics (animals, movies, occupations, sports, food, fictional characters, mythical creatures, holidays, landmarks, board games, and more).
+- Each base category has 40 to 50 cards, so repeated rounds stay varied.
 - Players can build their own categories in a personal category library, stored in their browser's local storage, no account needed.
 - That library supports exporting a category to a JSON file and importing one from a file, so players can share categories with each other by passing the file around.
 - A future goal (not in initial scope) is a more automatic import flow, such as a shareable category code or link, instead of a manual file.

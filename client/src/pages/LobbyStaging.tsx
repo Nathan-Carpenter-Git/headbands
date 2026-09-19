@@ -72,6 +72,7 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
                 {p.name}
                 {p.isLeader && <span className="badge badge-accent">Leader</span>}
                 {p.id === myPlayerId && <span className="badge">You</span>}
+                {!p.connected && <span className="badge badge-warning">Reconnecting</span>}
               </span>
               <span className="player-meta">
                 <span className="player-score">{p.score}</span> pts

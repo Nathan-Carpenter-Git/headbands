@@ -11,6 +11,7 @@ import type {
 } from "@headbands/shared";
 import { LobbyContext } from "./lobbyContext";
 import { playGameOver, playJoin, playReveal, playRoundComplete, playRoundStart } from "../lib/sound";
+import { clearSession, loadSession, saveSession } from "../lib/session";
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -30,6 +31,9 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
   const prevPhaseRef = useRef<LobbyStateDTO["phase"] | null>(null);
   const prevPlayerCountRef = useRef(0);
   const myPrevRevealedRef = useRef(false);
+  // True while a resumeSession request is in flight, so a resulting "error" reply is understood
+  // as "couldn't resume" (fall back to the join screen quietly) rather than shown as a banner.
+  const awaitingResumeRef = useRef(false);
   const [connected, setConnected] = useState(false);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [lobby, setLobby] = useState<LobbyStateDTO | null>(null);
@@ -38,6 +42,18 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<CategorySummaryDTO[]>([]);
   const [lobbyCustomCategories, setLobbyCustomCategories] = useState<CategorySummaryDTO[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const resetLocalState = useCallback(() => {
+    myPlayerIdRef.current = null;
+    prevPhaseRef.current = null;
+    prevPlayerCountRef.current = 0;
+    myPrevRevealedRef.current = false;
+    setMyPlayerId(null);
+    setLobby(null);
+    setRound(null);
+    setRoundResults(null);
+    setLobbyCustomCategories([]);
+  }, []);
 
   useEffect(() => {
     let shouldReconnect = true;
@@ -49,18 +65,18 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
 
       ws.addEventListener("open", () => {
         setConnected(true);
-        // A fresh socket (first load, or after a drop) has no server-side lobby membership.
-        // Clear any stale local state so the UI falls back to "join lobby" instead of pretending
-        // we're still in a game the server no longer knows about.
-        myPlayerIdRef.current = null;
-        prevPhaseRef.current = null;
-        prevPlayerCountRef.current = 0;
-        myPrevRevealedRef.current = false;
-        setMyPlayerId(null);
-        setLobby(null);
-        setRound(null);
-        setRoundResults(null);
-        setLobbyCustomCategories([]);
+        // A fresh socket (first load, or after a drop) has no server-side lobby membership yet.
+        // If we were previously in a lobby (e.g. the tab was backgrounded or the phone locked),
+        // try to reclaim that seat instead of dumping the player back on the join screen. Keep
+        // showing whatever was on screen until we know whether that succeeded - for a brief drop
+        // it usually does, and there's no need to flash to "join lobby" and back.
+        const saved = loadSession();
+        if (saved) {
+          awaitingResumeRef.current = true;
+          ws.send(JSON.stringify({ type: "resumeSession", ...saved } satisfies ClientMessage));
+        } else {
+          resetLocalState();
+        }
       });
 
       ws.addEventListener("close", () => {
@@ -74,12 +90,26 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
         const message: ServerMessage = JSON.parse(event.data);
         switch (message.type) {
           case "joined":
+            saveSession({ code: message.lobby.code, playerId: message.playerId, token: message.token });
             myPlayerIdRef.current = message.playerId;
             prevPhaseRef.current = message.lobby.phase;
             prevPlayerCountRef.current = message.lobby.players.length;
             setMyPlayerId(message.playerId);
             setLobby(message.lobby);
             return;
+          case "resumed": {
+            awaitingResumeRef.current = false;
+            const mine = message.round?.players.find((p) => p.id === message.playerId);
+            myPlayerIdRef.current = message.playerId;
+            prevPhaseRef.current = message.lobby.phase;
+            prevPlayerCountRef.current = message.lobby.players.length;
+            myPrevRevealedRef.current = mine?.revealed ?? false;
+            setMyPlayerId(message.playerId);
+            setLobby(message.lobby);
+            setRound(message.round);
+            setRoundResults(message.results);
+            return;
+          }
           case "lobbyState": {
             const prevPhase = prevPhaseRef.current;
             if (
@@ -126,6 +156,15 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
             setRoundResults(message.results);
             return;
           case "error":
+            if (awaitingResumeRef.current) {
+              // The saved session no longer resolves to anything (lobby gone, grace period
+              // expired, server restarted). Fall back to the join screen quietly - the player
+              // never did anything wrong, so a visible error banner would just be confusing.
+              awaitingResumeRef.current = false;
+              clearSession();
+              resetLocalState();
+              return;
+            }
             setErrorMessage(message.message);
             return;
         }
@@ -139,7 +178,7 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, []);
+  }, [resetLocalState]);
 
   const send = useCallback((message: ClientMessage) => {
     wsRef.current?.send(JSON.stringify(message));
@@ -152,16 +191,9 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
   );
   const leaveLobby = useCallback(() => {
     send({ type: "leaveLobby" });
-    myPlayerIdRef.current = null;
-    prevPhaseRef.current = null;
-    prevPlayerCountRef.current = 0;
-    myPrevRevealedRef.current = false;
-    setMyPlayerId(null);
-    setLobby(null);
-    setRound(null);
-    setRoundResults(null);
-    setLobbyCustomCategories([]);
-  }, [send]);
+    clearSession();
+    resetLocalState();
+  }, [send, resetLocalState]);
   const updateSettings = useCallback(
     (settings: Partial<LobbySettingsDTO>) => send({ type: "updateSettings", settings }),
     [send],

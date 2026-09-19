@@ -47,6 +47,7 @@ export function ResultsView({ lobby, results }: { lobby: LobbyStateDTO; results:
               <span className="placement-name">
                 {p.name}
                 {p.id === myPlayerId && <span className="badge">You</span>}
+                {!p.connected && <span className="badge badge-warning">Reconnecting</span>}
               </span>
               <span className="placement-points">{p.score} pts</span>
             </li>

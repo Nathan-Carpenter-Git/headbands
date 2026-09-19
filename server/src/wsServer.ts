@@ -15,13 +15,24 @@ const categorySummaries: CategorySummaryDTO[] = baseCategories.map((c) => ({
 }));
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+// How long a disconnected player's seat, score, and mid-round place are held for them - long
+// enough to cover a locked phone or a brief network drop, short enough that a genuinely gone
+// player doesn't block the game forever.
+const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS ?? 2 * 60_000);
 
 function send(ws: WebSocket, message: ServerMessage): void {
   ws.send(JSON.stringify(message));
 }
 
+function pendingKey(code: string, playerId: string): string {
+  return `${code}:${playerId}`;
+}
+
 export function attachWsServer(wss: WebSocketServer, lobbyManager: LobbyManager): void {
   const connections = new WeakMap<WebSocket, ConnectionMeta>();
+  // Scheduled full-removals for players currently in their reconnect grace period, keyed by
+  // "code:playerId" so a resume can find and cancel the one that applies to it.
+  const pendingRemovals = new Map<string, ReturnType<typeof setTimeout>>();
 
   // A network drop, sleeping laptop, or force-closed tab doesn't always fire a clean 'close'
   // event - the socket can just go silent. Ping everyone periodically and terminate any
@@ -56,7 +67,7 @@ export function attachWsServer(wss: WebSocketServer, lobbyManager: LobbyManager)
       }
 
       try {
-        handleMessage(ws, message, lobbyManager, connections);
+        handleMessage(ws, message, lobbyManager, connections, pendingRemovals);
       } catch (err) {
         const text = err instanceof LobbyError ? err.message : "Something went wrong";
         send(ws, { type: "error", message: text });
@@ -64,7 +75,28 @@ export function attachWsServer(wss: WebSocketServer, lobbyManager: LobbyManager)
     });
 
     ws.on("close", () => {
-      leaveCurrentLobby(ws, connections, lobbyManager);
+      const meta = connections.get(ws);
+      if (!meta) return;
+      connections.delete(ws);
+      const lobby = lobbyManager.getLobby(meta.code);
+      if (!lobby) return;
+
+      // Don't evict them immediately - just mark them disconnected and let everyone else know,
+      // then give them a window to reconnect (resumeSession) before actually removing them.
+      lobbyManager.markDisconnected(lobby, meta.playerId);
+      lobbyManager.broadcastGameState(lobby);
+
+      const key = pendingKey(meta.code, meta.playerId);
+      const timer = setTimeout(() => {
+        pendingRemovals.delete(key);
+        const stillLobby = lobbyManager.getLobby(meta.code);
+        if (!stillLobby) return;
+        const deleted = lobbyManager.removePlayer(stillLobby, meta.playerId);
+        if (!deleted) {
+          lobbyManager.broadcastGameState(stillLobby);
+        }
+      }, RECONNECT_GRACE_MS);
+      pendingRemovals.set(key, timer);
     });
   });
 }
@@ -79,10 +111,17 @@ function leaveCurrentLobby(
   ws: WebSocket,
   connections: WeakMap<WebSocket, ConnectionMeta>,
   lobbyManager: LobbyManager,
+  pendingRemovals: Map<string, ReturnType<typeof setTimeout>>,
 ): void {
   const meta = connections.get(ws);
   if (!meta) return;
   connections.delete(ws);
+  const key = pendingKey(meta.code, meta.playerId);
+  const timer = pendingRemovals.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    pendingRemovals.delete(key);
+  }
   const lobby = lobbyManager.getLobby(meta.code);
   if (!lobby) return;
   const deleted = lobbyManager.removePlayer(lobby, meta.playerId);
@@ -96,25 +135,45 @@ function handleMessage(
   message: ClientMessage,
   lobbyManager: LobbyManager,
   connections: WeakMap<WebSocket, ConnectionMeta>,
+  pendingRemovals: Map<string, ReturnType<typeof setTimeout>>,
 ): void {
   switch (message.type) {
     case "createLobby": {
-      leaveCurrentLobby(ws, connections, lobbyManager);
-      const { lobby, playerId } = lobbyManager.createLobby(message.playerName, ws);
+      leaveCurrentLobby(ws, connections, lobbyManager, pendingRemovals);
+      const { lobby, playerId, token } = lobbyManager.createLobby(message.playerName, ws);
       connections.set(ws, { code: lobby.code, playerId });
-      send(ws, { type: "joined", playerId, lobby: lobbyManager.toDTO(lobby) });
+      send(ws, { type: "joined", playerId, token, lobby: lobbyManager.toDTO(lobby) });
       return;
     }
     case "joinLobby": {
-      leaveCurrentLobby(ws, connections, lobbyManager);
-      const { lobby, playerId } = lobbyManager.joinLobby(message.code, message.playerName, ws);
+      leaveCurrentLobby(ws, connections, lobbyManager, pendingRemovals);
+      const { lobby, playerId, token } = lobbyManager.joinLobby(message.code, message.playerName, ws);
       connections.set(ws, { code: lobby.code, playerId });
-      send(ws, { type: "joined", playerId, lobby: lobbyManager.toDTO(lobby) });
+      send(ws, { type: "joined", playerId, token, lobby: lobbyManager.toDTO(lobby) });
+      lobbyManager.broadcastGameState(lobby);
+      return;
+    }
+    case "resumeSession": {
+      const lobby = lobbyManager.resumeSession(message.code, message.playerId, message.token, ws);
+      connections.set(ws, { code: lobby.code, playerId: message.playerId });
+      const key = pendingKey(lobby.code, message.playerId);
+      const timer = pendingRemovals.get(key);
+      if (timer) {
+        clearTimeout(timer);
+        pendingRemovals.delete(key);
+      }
+      send(ws, {
+        type: "resumed",
+        playerId: message.playerId,
+        lobby: lobbyManager.toDTO(lobby),
+        round: lobby.phase === "round" ? lobbyManager.toRoundStateDTO(lobby, message.playerId) : null,
+        results: lobby.phase === "results" ? lobbyManager.toRoundResultsDTO(lobby) : null,
+      });
       lobbyManager.broadcastGameState(lobby);
       return;
     }
     case "leaveLobby": {
-      leaveCurrentLobby(ws, connections, lobbyManager);
+      leaveCurrentLobby(ws, connections, lobbyManager, pendingRemovals);
       return;
     }
     case "uploadCategory": {

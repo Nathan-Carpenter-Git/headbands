@@ -5,6 +5,8 @@ export interface PlayerDTO {
   name: string;
   isLeader: boolean;
   score: number;
+  /** False while they're within the reconnect grace period after a dropped connection. */
+  connected: boolean;
 }
 
 export interface CategorySummaryDTO {
@@ -48,6 +50,8 @@ export interface RoundPlayerViewDTO {
   place: number | null;
   /** Null only for the viewer's own entry while they haven't revealed yet. */
   card: string | null;
+  /** False while they're within the reconnect grace period after a dropped connection. */
+  connected: boolean;
 }
 
 export interface RoundStateDTO {

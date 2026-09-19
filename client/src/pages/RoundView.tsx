@@ -27,6 +27,7 @@ export function RoundView({ round }: { round: RoundStateDTO }) {
                 <span className="player-name">
                   {p.name}
                   {isMe && <span className="badge">You</span>}
+                  {!p.connected && <span className="badge badge-warning">Reconnecting</span>}
                 </span>
                 <span className={`card-tile-value${hidden ? " is-hidden" : ""}`}>
                   {hidden ? "Hidden from you" : p.card}

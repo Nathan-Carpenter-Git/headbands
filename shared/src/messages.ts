@@ -10,6 +10,7 @@ import type {
 export type ClientMessage =
   | { type: "createLobby"; playerName: string }
   | { type: "joinLobby"; code: string; playerName: string }
+  | { type: "resumeSession"; code: string; playerId: string; token: string }
   | { type: "leaveLobby" }
   | { type: "updateSettings"; settings: Partial<LobbySettingsDTO> }
   | { type: "uploadCategory"; category: CategoryUploadDTO }
@@ -19,7 +20,14 @@ export type ClientMessage =
   | { type: "playAgain" };
 
 export type ServerMessage =
-  | { type: "joined"; playerId: string; lobby: LobbyStateDTO }
+  | { type: "joined"; playerId: string; token: string; lobby: LobbyStateDTO }
+  | {
+      type: "resumed";
+      playerId: string;
+      lobby: LobbyStateDTO;
+      round: RoundStateDTO | null;
+      results: RoundResultsDTO | null;
+    }
   | { type: "lobbyState"; lobby: LobbyStateDTO }
   | { type: "categories"; categories: CategorySummaryDTO[] }
   | { type: "customCategories"; categories: CategorySummaryDTO[] }

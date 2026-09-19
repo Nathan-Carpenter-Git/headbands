@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { GAME_LIMITS } from "@headbands/shared";
 import { useLobby } from "../state/useLobby";
 import { LobbyStaging } from "./LobbyStaging";
 import { RoundView } from "./RoundView";
@@ -36,6 +37,7 @@ export function Lobby() {
                 className="input"
                 placeholder="e.g. Nathan"
                 autoFocus
+                maxLength={GAME_LIMITS.maxPlayerNameLength}
                 value={joinName}
                 onChange={(e) => setJoinName(e.target.value)}
               />

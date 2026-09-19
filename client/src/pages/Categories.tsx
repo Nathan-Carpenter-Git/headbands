@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { CATEGORY_LIMITS } from "@headbands/shared";
 import { useLocalCategories } from "../state/useLocalCategories";
 import type { LocalCategory } from "../lib/localCategories";
 
@@ -100,6 +101,7 @@ export function Categories() {
               id="category-name"
               className="input"
               placeholder="e.g. 90s Cartoons"
+              maxLength={CATEGORY_LIMITS.maxNameLength}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />

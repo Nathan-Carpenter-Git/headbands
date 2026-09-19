@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { GAME_LIMITS } from "@headbands/shared";
 import { useLobby } from "../state/useLobby";
 
 export function Home() {
@@ -17,12 +18,12 @@ export function Home() {
 
   return (
     <div className="page">
-      <div className="header-block">
+      <div className="header-block hero">
         <h1>Guess what's on your card</h1>
         <p className="lede">Everyone else can see it. You can't. Ask around until you figure it out.</p>
       </div>
 
-      <div className="card">
+      <div className="card card-tilt-l">
         <h2>Start a new lobby</h2>
         <form
           className="stack"
@@ -39,6 +40,8 @@ export function Home() {
               id="create-name"
               className="input"
               placeholder="e.g. Nathan"
+              autoFocus
+              maxLength={GAME_LIMITS.maxPlayerNameLength}
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
             />
@@ -49,7 +52,7 @@ export function Home() {
         </form>
       </div>
 
-      <div className="card">
+      <div className="card card-tilt-r">
         <h2>Join with a code</h2>
         <form
           className="stack"
@@ -67,6 +70,7 @@ export function Home() {
                 id="join-code"
                 className="input"
                 placeholder="ABCD"
+                maxLength={4}
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               />
@@ -79,6 +83,7 @@ export function Home() {
                 id="join-name"
                 className="input"
                 placeholder="e.g. Nathan"
+                maxLength={GAME_LIMITS.maxPlayerNameLength}
                 value={joinName}
                 onChange={(e) => setJoinName(e.target.value)}
               />

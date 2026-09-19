@@ -2,6 +2,8 @@ import { Link, Route, Routes } from "react-router-dom";
 import { Home } from "./pages/Home";
 import { Lobby } from "./pages/Lobby";
 import { Categories } from "./pages/Categories";
+import { ThemeToggle } from "./components/ThemeToggle";
+import { SoundToggle } from "./components/SoundToggle";
 import { useLobby } from "./state/useLobby";
 
 function App() {
@@ -17,9 +19,13 @@ function App() {
             if (lobby) leaveLobby();
           }}
         >
-          <span className="brand-mark" />
+          <img src="/favicon.svg" alt="" className="brand-mark" />
           <span className="brand-name">Headbands</span>
         </Link>
+        <div className="header-controls">
+          <SoundToggle />
+          <ThemeToggle />
+        </div>
       </header>
 
       <div className="banner-stack">

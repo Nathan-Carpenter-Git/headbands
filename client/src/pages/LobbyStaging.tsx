@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { LobbyStateDTO } from "@headbands/shared";
+import { GAME_LIMITS, type LobbyStateDTO } from "@headbands/shared";
 import { useLobby } from "../state/useLobby";
 import { useLocalCategories } from "../state/useLocalCategories";
 import { Avatar } from "../components/Avatar";
@@ -9,6 +9,14 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
   const { myPlayerId, categories, lobbyCustomCategories, updateSettings, uploadCategory, startRound } = useLobby();
   const { categories: localCategories } = useLocalCategories();
   const [copied, setCopied] = useState(false);
+  const [roundsDraft, setRoundsDraft] = useState(String(lobby.settings.rounds));
+  // Mirrors lobby.settings.rounds so we can detect external changes (the server confirming
+  // a value, or another client changing it) during render, without a useEffect round-trip.
+  const [syncedRounds, setSyncedRounds] = useState(lobby.settings.rounds);
+  if (lobby.settings.rounds !== syncedRounds) {
+    setSyncedRounds(lobby.settings.rounds);
+    setRoundsDraft(String(lobby.settings.rounds));
+  }
   const me = lobby.players.find((p) => p.id === myPlayerId);
   const inviteLink = `${window.location.origin}/lobby/${lobby.code}`;
 
@@ -111,10 +119,24 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
             <input
               id="rounds-input"
               type="number"
-              min={1}
+              min={GAME_LIMITS.minRounds}
+              max={GAME_LIMITS.maxRounds}
               className="input number-input"
-              value={lobby.settings.rounds}
-              onChange={(e) => updateSettings({ rounds: Number(e.target.value) })}
+              value={roundsDraft}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setRoundsDraft(raw);
+                const value = Number(raw);
+                if (
+                  raw.trim() !== "" &&
+                  Number.isInteger(value) &&
+                  value >= GAME_LIMITS.minRounds &&
+                  value <= GAME_LIMITS.maxRounds
+                ) {
+                  updateSettings({ rounds: value });
+                }
+              }}
+              onBlur={() => setRoundsDraft(String(lobby.settings.rounds))}
             />
           </div>
 

@@ -10,6 +10,7 @@ import type {
   ServerMessage,
 } from "@headbands/shared";
 import { LobbyContext } from "./lobbyContext";
+import { playGameOver, playJoin, playReveal, playRoundComplete, playRoundStart } from "../lib/sound";
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -22,6 +23,13 @@ const WS_URL = import.meta.env.VITE_WS_URL || defaultWsUrl();
 
 export function LobbyProvider({ children }: { children: ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null);
+  // Tracked outside React state purely to detect transitions (someone joined, a round just
+  // started, my own card just got revealed) for sound cues, without re-running effects on
+  // every render or reaching for a stale closure over state.
+  const myPlayerIdRef = useRef<string | null>(null);
+  const prevPhaseRef = useRef<LobbyStateDTO["phase"] | null>(null);
+  const prevPlayerCountRef = useRef(0);
+  const myPrevRevealedRef = useRef(false);
   const [connected, setConnected] = useState(false);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [lobby, setLobby] = useState<LobbyStateDTO | null>(null);
@@ -44,6 +52,10 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
         // A fresh socket (first load, or after a drop) has no server-side lobby membership.
         // Clear any stale local state so the UI falls back to "join lobby" instead of pretending
         // we're still in a game the server no longer knows about.
+        myPlayerIdRef.current = null;
+        prevPhaseRef.current = null;
+        prevPlayerCountRef.current = 0;
+        myPrevRevealedRef.current = false;
         setMyPlayerId(null);
         setLobby(null);
         setRound(null);
@@ -62,26 +74,55 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
         const message: ServerMessage = JSON.parse(event.data);
         switch (message.type) {
           case "joined":
+            myPlayerIdRef.current = message.playerId;
+            prevPhaseRef.current = message.lobby.phase;
+            prevPlayerCountRef.current = message.lobby.players.length;
             setMyPlayerId(message.playerId);
             setLobby(message.lobby);
             return;
-          case "lobbyState":
+          case "lobbyState": {
+            const prevPhase = prevPhaseRef.current;
+            if (
+              prevPhase === "lobby" &&
+              message.lobby.phase === "lobby" &&
+              message.lobby.players.length > prevPlayerCountRef.current
+            ) {
+              playJoin();
+            }
+            if (prevPhase !== null && prevPhase !== "round" && message.lobby.phase === "round") {
+              playRoundStart();
+              myPrevRevealedRef.current = false;
+            }
+            prevPhaseRef.current = message.lobby.phase;
+            prevPlayerCountRef.current = message.lobby.players.length;
             setLobby(message.lobby);
             if (message.lobby.phase === "lobby") {
               setRound(null);
               setRoundResults(null);
             }
             return;
+          }
           case "categories":
             setCategories(message.categories);
             return;
           case "customCategories":
             setLobbyCustomCategories(message.categories);
             return;
-          case "roundState":
+          case "roundState": {
+            const mine = message.round.players.find((p) => p.id === myPlayerIdRef.current);
+            if (mine?.revealed && !myPrevRevealedRef.current) {
+              playReveal();
+            }
+            myPrevRevealedRef.current = mine?.revealed ?? false;
             setRound(message.round);
             return;
+          }
           case "roundResults":
+            if (message.results.gameOver) {
+              playGameOver();
+            } else {
+              playRoundComplete();
+            }
             setRoundResults(message.results);
             return;
           case "error":
@@ -111,6 +152,10 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
   );
   const leaveLobby = useCallback(() => {
     send({ type: "leaveLobby" });
+    myPlayerIdRef.current = null;
+    prevPhaseRef.current = null;
+    prevPlayerCountRef.current = 0;
+    myPrevRevealedRef.current = false;
     setMyPlayerId(null);
     setLobby(null);
     setRound(null);

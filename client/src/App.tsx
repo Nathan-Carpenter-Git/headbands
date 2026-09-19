@@ -43,6 +43,18 @@ function App() {
         <Route path="/categories" element={<Categories />} />
         <Route path="/lobby/:code" element={<Lobby />} />
       </Routes>
+
+      <footer className="app-footer">
+        <a href="https://www.linkedin.com/in/nathan-b-carpenter/" target="_blank" rel="noreferrer">
+          LinkedIn
+        </a>
+        <a href="https://www.nathan-carpenter.org" target="_blank" rel="noreferrer">
+          Website
+        </a>
+        <a href="https://github.com/Nathan-Carpenter-Git/headbands" target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+      </footer>
     </>
   );
 }

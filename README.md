@@ -14,6 +14,21 @@ This is an npm workspaces monorepo:
 - `server/` — Node.js + Express + WebSocket backend. Holds all game state in memory, no database.
 - `shared/` — TypeScript types and the WebSocket message contract used by both sides.
 
+## Card pools
+
+Base categories are loaded when the server starts.
+A few are written by hand in `server/src/baseCategories.ts`.
+The rest are JSON files in `server/data/categories/`, one per category, so the pool can grow without touching code.
+If a file shares an id with a hand written category, their cards are merged.
+
+Some of those files are generated from Wikidata (CC0) by `scripts/build-wikidata-pools.mjs`, ranked by popularity so the cards are ones people will recognize.
+Run it with `node scripts/build-wikidata-pools.mjs`, optionally followed by category ids.
+Existing files are skipped unless you pass `--force`.
+
+`node scripts/check-card-pools.mjs` is the quality gate.
+It prints only counts, never card text, and `--fix` removes or repairs flagged cards.
+Run it after adding or regenerating any pool.
+
 ## Running it locally
 
 ```bash

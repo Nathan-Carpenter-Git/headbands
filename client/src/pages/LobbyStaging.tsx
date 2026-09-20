@@ -9,6 +9,7 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
   const { myPlayerId, categories, lobbyCustomCategories, updateSettings, uploadCategory, startRound } = useLobby();
   const { categories: localCategories } = useLocalCategories();
   const [copied, setCopied] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [roundsDraft, setRoundsDraft] = useState(String(lobby.settings.rounds));
   // Mirrors lobby.settings.rounds so we can detect external changes (the server confirming
   // a value, or another client changing it) during render, without a useEffect round-trip.
@@ -29,6 +30,12 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
       .map((c) => ({ id: c.id, name: c.name, cardCount: c.cards.length, needsUpload: true })),
   ];
 
+  const filterText = categoryFilter.trim().toLowerCase();
+  const visibleCategories = filterText
+    ? selectableCategories.filter((c) => c.name.toLowerCase().includes(filterText))
+    : selectableCategories;
+  const selectedCount = lobby.settings.categoryIds.length;
+
   function toggleCategory(id: string, checked: boolean, needsUpload: boolean) {
     if (checked && needsUpload) {
       const full = localCategories.find((c) => c.id === id);
@@ -38,6 +45,27 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
       ? [...lobby.settings.categoryIds, id]
       : lobby.settings.categoryIds.filter((existing) => existing !== id);
     updateSettings({ categoryIds: next });
+  }
+
+  const selectedIds = new Set(lobby.settings.categoryIds);
+  const allVisibleSelected = visibleCategories.length > 0 && visibleCategories.every((c) => selectedIds.has(c.id));
+  const anyVisibleSelected = visibleCategories.some((c) => selectedIds.has(c.id));
+  const selectLabel = filterText ? "Select shown" : "Select all";
+  const clearLabel = filterText ? "Clear shown" : "Clear";
+
+  function selectVisible() {
+    const toAdd = visibleCategories.filter((c) => !selectedIds.has(c.id));
+    for (const c of toAdd) {
+      if (!c.needsUpload) continue;
+      const full = localCategories.find((local) => local.id === c.id);
+      if (full) uploadCategory(full);
+    }
+    updateSettings({ categoryIds: [...lobby.settings.categoryIds, ...toAdd.map((c) => c.id)] });
+  }
+
+  function clearVisible() {
+    const visibleIds = new Set(visibleCategories.map((c) => c.id));
+    updateSettings({ categoryIds: lobby.settings.categoryIds.filter((id) => !visibleIds.has(id)) });
   }
 
   return (
@@ -92,9 +120,32 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
           </div>
 
           <div className="field">
-            <span className="field-label">Categories</span>
-            <div>
-              {selectableCategories.map((c) => (
+            <div className="row-between">
+              <span className="field-label">Categories</span>
+              <span className="option-hint">{selectedCount} selected</span>
+            </div>
+            {selectableCategories.length > 8 && (
+              <input
+                type="search"
+                className="input"
+                placeholder="Search categories"
+                aria-label="Search categories"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              />
+            )}
+            {selectableCategories.length > 1 && (
+              <div className="category-actions">
+                <button type="button" className="btn btn-sm" onClick={selectVisible} disabled={allVisibleSelected}>
+                  {selectLabel}
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={clearVisible} disabled={!anyVisibleSelected}>
+                  {clearLabel}
+                </button>
+              </div>
+            )}
+            <div className="category-picker">
+              {visibleCategories.map((c) => (
                 <label key={c.id} className="checkbox-option">
                   <input
                     type="checkbox"
@@ -108,6 +159,9 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
                 </label>
               ))}
               {selectableCategories.length === 0 && <p className="empty-hint">No categories available.</p>}
+              {selectableCategories.length > 0 && visibleCategories.length === 0 && (
+                <p className="empty-hint">No categories match that search.</p>
+              )}
             </div>
           </div>
 

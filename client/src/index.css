@@ -456,7 +456,6 @@ input {
   opacity: 0.4;
   cursor: not-allowed;
   box-shadow: none;
-  transform: translate(3px, 3px);
 }
 
 .btn-primary {
@@ -583,6 +582,19 @@ input {
   font-family: var(--font-mono);
   color: var(--color-text-faint);
   font-size: 12px;
+}
+
+.category-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.category-picker {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: var(--space-2);
+  border-top: 1.5px dashed var(--color-border);
+  border-bottom: 1.5px dashed var(--color-border);
 }
 
 .number-input {

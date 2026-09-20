@@ -1,10 +1,65 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 export interface Category {
   id: string;
   name: string;
   cards: string[];
 }
 
-export const baseCategories: Category[] = [
+const MAX_CARD_LENGTH = 60;
+// Large generated pools live as one JSON file per category, next to the hand written core set.
+// Same path from src/ (dev) and dist/ (production build).
+const DATA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../data/categories");
+
+function cleanCards(cards: unknown[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of cards) {
+    if (typeof raw !== "string") continue;
+    const card = raw.trim();
+    const key = card.toLowerCase();
+    if (!card || card.length > MAX_CARD_LENGTH || seen.has(key)) continue;
+    seen.add(key);
+    result.push(card);
+  }
+  return result;
+}
+
+function loadDataCategories(): Category[] {
+  if (!existsSync(DATA_DIR)) return [];
+  const loaded: Category[] = [];
+  for (const file of readdirSync(DATA_DIR).filter((f) => f.endsWith(".json")).sort()) {
+    try {
+      const data = JSON.parse(readFileSync(path.join(DATA_DIR, file), "utf8"));
+      if (typeof data.id !== "string" || typeof data.name !== "string" || !Array.isArray(data.cards)) {
+        console.warn(`Skipping malformed category file ${file}`);
+        continue;
+      }
+      loaded.push({ id: data.id, name: data.name, cards: cleanCards(data.cards) });
+    } catch {
+      console.warn(`Skipping unreadable category file ${file}`);
+    }
+  }
+  return loaded;
+}
+
+/** Data files extend a core category that has the same id, or add a brand new category. */
+function mergeCategories(core: Category[], extra: Category[]): Category[] {
+  const byId = new Map(core.map((c) => [c.id, { ...c, cards: [...c.cards] }]));
+  for (const category of extra) {
+    const existing = byId.get(category.id);
+    if (existing) {
+      existing.cards = cleanCards([...existing.cards, ...category.cards]);
+    } else if (category.cards.length >= 2) {
+      byId.set(category.id, category);
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const coreCategories: Category[] = [
   {
     id: "animals",
     name: "Animals",
@@ -746,6 +801,8 @@ export const baseCategories: Category[] = [
     ],
   },
 ];
+
+export const baseCategories: Category[] = mergeCategories(coreCategories, loadDataCategories());
 
 export function getCategoryById(id: string): Category | undefined {
   return baseCategories.find((c) => c.id === id);

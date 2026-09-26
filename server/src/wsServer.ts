@@ -30,7 +30,15 @@ function pendingKey(code: string, playerId: string): string {
   return `${code}:${playerId}`;
 }
 
-export function attachWsServer(wss: WebSocketServer, lobbyManager: LobbyManager): void {
+export interface WsServerOptions {
+  reconnectGraceMs?: number;
+}
+
+export function attachWsServer(
+  wss: WebSocketServer,
+  lobbyManager: LobbyManager,
+  { reconnectGraceMs = RECONNECT_GRACE_MS }: WsServerOptions = {},
+): void {
   const connections = new WeakMap<WebSocket, ConnectionMeta>();
   // Scheduled full-removals for players currently in their reconnect grace period, keyed by
   // "code:playerId" so a resume can find and cancel the one that applies to it.
@@ -85,7 +93,8 @@ export function attachWsServer(wss: WebSocketServer, lobbyManager: LobbyManager)
 
       // Don't evict them immediately - just mark them disconnected and let everyone else know,
       // then give them a window to reconnect (resumeSession) before actually removing them.
-      lobbyManager.markDisconnected(lobby, meta.playerId);
+      // If they've already resumed on a newer socket, this close is stale and changes nothing.
+      if (!lobbyManager.markDisconnected(lobby, meta.playerId, ws)) return;
       lobbyManager.broadcastGameState(lobby);
 
       const key = pendingKey(meta.code, meta.playerId);
@@ -97,7 +106,7 @@ export function attachWsServer(wss: WebSocketServer, lobbyManager: LobbyManager)
         if (!deleted) {
           lobbyManager.broadcastGameState(stillLobby);
         }
-      }, RECONNECT_GRACE_MS);
+      }, reconnectGraceMs);
       pendingRemovals.set(key, timer);
     });
   });
@@ -156,8 +165,14 @@ function handleMessage(
       return;
     }
     case "resumeSession": {
-      const lobby = lobbyManager.resumeSession(message.code, message.playerId, message.token, ws);
+      const { lobby, replacedWs } = lobbyManager.resumeSession(message.code, message.playerId, message.token, ws);
       connections.set(ws, { code: lobby.code, playerId: message.playerId });
+      if (replacedWs) {
+        // The client gave up on this socket and reconnected before the server noticed it was
+        // dead. Detach it so its eventual close doesn't count as this player disconnecting.
+        connections.delete(replacedWs);
+        replacedWs.terminate();
+      }
       const key = pendingKey(lobby.code, message.playerId);
       const timer = pendingRemovals.get(key);
       if (timer) {

@@ -1,5 +1,6 @@
 // Quality gate for server/data/categories/*.json. Prints only counts, never card text, so the
-// pools can be checked without spoiling them.
+// pools can be checked without spoiling them. The server deals each pool into parts of at most
+// CARDS_PER_PART cards (see server/src/categorySplit.ts); the part counts reported here match that.
 //
 // Usage: node scripts/check-card-pools.mjs [--fix]
 // --fix removes cards that fail a check and rewrites the files.
@@ -17,30 +18,39 @@ const BLOCKED = new RegExp(
   "i",
 );
 
-const checks = {
+// Whole names that contain a blocked word but are fine as cards.
+const BLOCKED_EXCEPTIONS = /killer whale|dick dastardly/i;
+
+const commonChecks = {
   "too long (over 40 chars)": (c) => c.length > 40,
   "too short": (c) => c.length < 2,
-  "blocked word": (c) => BLOCKED.test(c.replace(/killer whale/i, "")),
+  "blocked word": (c) => BLOCKED.test(c.replace(BLOCKED_EXCEPTIONS, "")),
   "odd characters": (c) => /[()\[\]{}<>@#%^*=_|\\/"`~;]/.test(c),
   "leading or trailing punctuation": (c) => /^[\-–.,:'’!?&]|[\-–,:&]$/.test(c),
+  "too many words": (c) => c.split(/\s+/).length > 6,
+};
+
+// Label noise heuristics for generated pools. Hand curated pools legitimately contain names
+// like "HAL 9000", "CD-ROM" or "xQc", so these only run on Wikidata files.
+const wikidataChecks = {
   "mostly digits": (c) => (c.match(/\d/g) ?? []).length > c.replace(/\s/g, "").length / 2,
   "looks like a code": (c) => /^[A-Z0-9\-]{6,}$/.test(c),
-  "too many words": (c) => c.split(/\s+/).length > 6,
   "starts lowercase": (c) => /^[a-z]/.test(c) && !/^(iPhone|iPad|iPod|eBay|iTunes|iCloud|iOS)/.test(c),
 };
 
 const files = (await readdir(DIR)).filter((f) => f.endsWith(".json")).sort();
-const totals = Object.fromEntries(Object.keys(checks).map((k) => [k, 0]));
+const totals = Object.fromEntries(Object.keys({ ...commonChecks, ...wikidataChecks }).map((k) => [k, 0]));
 const perCategory = [];
 const seenAcross = new Map();
 let allCards = 0;
 
 for (const file of files) {
   const data = JSON.parse(await readFile(path.join(DIR, file), "utf8"));
+  const checks = data.source === "wikidata" ? { ...commonChecks, ...wikidataChecks } : commonChecks;
   const kept = [];
   for (let card of data.cards) {
     // Wikidata labels for common nouns are lowercase; capitalize rather than drop them.
-    if (FIX && checks["starts lowercase"](card)) card = card.charAt(0).toUpperCase() + card.slice(1);
+    if (FIX && checks["starts lowercase"]?.(card)) card = card.charAt(0).toUpperCase() + card.slice(1);
     const failed = Object.entries(checks).filter(([, test]) => test(card)).map(([name]) => name);
     if (failed.length > 0) {
       for (const name of failed) totals[name]++;

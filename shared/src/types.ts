@@ -9,10 +9,24 @@ export interface PlayerDTO {
   connected: boolean;
 }
 
+/** Ties together the parts a big base category was dealt into ("Cartoon Characters #1", "#2", ...). */
+export interface CategoryGroupDTO {
+  id: string;
+  /** The name without the part suffix, e.g. "Cartoon Characters". */
+  name: string;
+  /** 1-based. */
+  part: number;
+  parts: number;
+}
+
 export interface CategorySummaryDTO {
   id: string;
   name: string;
   cardCount: number;
+  /** Base categories only: the picker section it's listed under, e.g. "Characters". */
+  section?: string;
+  /** Base categories only: set when this is one part of a category that was split up. */
+  group?: CategoryGroupDTO;
 }
 
 /** A category with its full card list, as uploaded from a player's local library. */

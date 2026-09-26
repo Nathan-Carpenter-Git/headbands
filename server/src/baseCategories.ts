@@ -1,11 +1,18 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { CATEGORY_LIMITS, type CategoryGroupDTO } from "@headbands/shared";
+import { CATEGORY_SECTIONS, FALLBACK_SECTION } from "./categorySections.js";
+import { splitCategory } from "./categorySplit.js";
 
 export interface Category {
   id: string;
   name: string;
   cards: string[];
+  /** Base categories only: the picker section it's listed under. */
+  section?: string;
+  /** Base categories only: set when this is one part of a category that was split up. */
+  group?: CategoryGroupDTO;
 }
 
 const MAX_CARD_LENGTH = 60;
@@ -802,7 +809,26 @@ const coreCategories: Category[] = [
   },
 ];
 
-export const baseCategories: Category[] = mergeCategories(coreCategories, loadDataCategories());
+const sectionById = new Map(
+  Object.entries(CATEGORY_SECTIONS).flatMap(([section, ids]) => ids.map((id) => [id, section] as const)),
+);
+
+function withSection(category: Category): Category {
+  const section = sectionById.get(category.id);
+  if (!section) console.warn(`Category ${category.id} has no picker section, listing it under ${FALLBACK_SECTION}`);
+  return { ...category, section: section ?? FALLBACK_SECTION };
+}
+
+const sectionOrder = [...Object.keys(CATEGORY_SECTIONS), FALLBACK_SECTION];
+
+/**
+ * Every playable base category, ordered by picker section and then name, with big ones already
+ * dealt into parts ("Movies #1", "Movies #2", ...).
+ */
+export const baseCategories: Category[] = mergeCategories(coreCategories, loadDataCategories())
+  .map(withSection)
+  .sort((a, b) => sectionOrder.indexOf(a.section!) - sectionOrder.indexOf(b.section!))
+  .flatMap((c) => splitCategory(c, CATEGORY_LIMITS.maxCardsPerPart));
 
 export function getCategoryById(id: string): Category | undefined {
   return baseCategories.find((c) => c.id === id);

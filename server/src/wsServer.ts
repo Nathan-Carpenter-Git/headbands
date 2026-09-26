@@ -12,6 +12,8 @@ const categorySummaries: CategorySummaryDTO[] = baseCategories.map((c) => ({
   id: c.id,
   name: c.name,
   cardCount: c.cards.length,
+  section: c.section,
+  group: c.group,
 }));
 
 const HEARTBEAT_INTERVAL_MS = 30_000;

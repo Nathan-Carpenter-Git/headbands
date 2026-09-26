@@ -24,7 +24,7 @@ Figure out what your own card says before everyone else figures out theirs.
 3. Take turns asking the group yes or no questions about your card, out loud.
    Examples: "Am I an animal?" or "Would I find this in a kitchen?"
 4. Everyone else answers honestly, since they can all see your card.
-5. When you think you know what your card is, say your guess out loud.
+5. When you think you know what your card is, say your guess out loud (only on your turn).
 6. If you are correct, press the reveal button!
 
 Don't like your card?

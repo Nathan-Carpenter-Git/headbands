@@ -20,6 +20,10 @@ Base categories are loaded when the server starts.
 A few are written by hand in `server/src/baseCategories.ts`.
 The rest are JSON files in `server/data/categories/`, one per category, so the pool can grow without touching code.
 If a file shares an id with a hand written category, their cards are merged.
+Every category must be listed under a picker section in `server/src/categorySections.ts` (Characters, People, Pop Culture, and so on).
+Categories with more than 40 cards are dealt round robin into parts of at most 40, such as "Movies #1" and "Movies #2", so every part gets an even mix of the whole pool.
+The deal is deterministic, so a part always holds the same cards.
+The lobby picker shows each category as one row with its parts as toggles.
 
 Some of those files are generated from Wikidata (CC0) by `scripts/build-wikidata-pools.mjs`, ranked by popularity so the cards are ones people will recognize.
 Run it with `node scripts/build-wikidata-pools.mjs`, optionally followed by category ids.

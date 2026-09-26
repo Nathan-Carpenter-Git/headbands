@@ -97,8 +97,18 @@ export class LobbyManager {
     return { lobby, playerId, token };
   }
 
-  /** Reattaches a new connection to an existing player record after a dropped connection. */
-  resumeSession(code: string, playerId: string, token: string, ws: WebSocket): Lobby {
+  /**
+   * Reattaches a new connection to an existing player record after a dropped connection.
+   * Also returns the connection it replaced, if the server still had one: the client can notice
+   * a drop and reconnect before the server notices the old socket is dead, and the caller must
+   * retire that stale socket so it can't later disconnect the player out from under the new one.
+   */
+  resumeSession(
+    code: string,
+    playerId: string,
+    token: string,
+    ws: WebSocket,
+  ): { lobby: Lobby; replacedWs: WebSocket | null } {
     const lobby = this.lobbies.get(code.toUpperCase());
     if (!lobby) {
       throw new LobbyError("That lobby no longer exists");
@@ -107,21 +117,25 @@ export class LobbyManager {
     if (!player || player.token !== token) {
       throw new LobbyError("Couldn't resume that session");
     }
+    const replacedWs = player.ws !== ws ? player.ws : null;
     player.ws = ws;
     player.connected = true;
-    return lobby;
+    return { lobby, replacedWs };
   }
 
   /**
    * Marks a player as disconnected without removing them, so a reconnect within the grace
    * period (handled by the caller) can reclaim their seat, score, and place mid-round instead
    * of losing it to a brief network drop or a locked phone.
+   * Only applies if `ws` is still the player's current connection, so a stale socket closing
+   * after the player already resumed on a new one is ignored. Returns whether it applied.
    */
-  markDisconnected(lobby: Lobby, playerId: string): void {
+  markDisconnected(lobby: Lobby, playerId: string, ws: WebSocket): boolean {
     const player = lobby.players.get(playerId);
-    if (!player) return;
+    if (!player || player.ws !== ws) return false;
     player.ws = null;
     player.connected = false;
+    return true;
   }
 
   updateSettings(lobby: Lobby, playerId: string, settings: Partial<LobbySettingsDTO>): void {

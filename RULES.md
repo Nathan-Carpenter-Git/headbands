@@ -24,7 +24,8 @@ Figure out what your own card says before everyone else figures out theirs.
 3. Take turns asking the group yes or no questions about your card, out loud.
    Examples: "Am I an animal?" or "Would I find this in a kitchen?"
 4. Everyone else answers honestly, since they can all see your card.
-5. When you think you know what your card is, say your guess out loud and press the reveal button.
+5. When you think you know what your card is, say your guess out loud.
+6. If you are correct, press the reveal button!
 
 Don't like your card?
 You can swap it for a different one as many times as you want before you reveal.
@@ -55,12 +56,8 @@ When the last round ends, the player with the most points wins.
 - **Categories:** pick one for the whole game, or pick several and the game moves through them round by round.
 - **Randomize order:** shuffle the order the categories come up in.
 - **Rounds:** how many rounds to play.
-- **Auto reveal the last player:** once everyone else has revealed, the last player's card is revealed for them and the round ends.
-  Turn this off if you want the last player to keep guessing.
 
 ## Good to know
 
-- If a category has fewer cards than players, a few cards will repeat.
-  Duplicates are kept to the minimum needed.
 - You can build your own categories from the category library and share them with friends as files.
 - If your phone locks or your connection drops, come back within two minutes and you'll pick up right where you left off.

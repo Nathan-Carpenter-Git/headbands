@@ -17,6 +17,9 @@ export type ClientMessage =
   | { type: "startRound" }
   | { type: "swapCard" }
   | { type: "revealCard" }
+  | { type: "spyVoteSwap"; vote: boolean }
+  | { type: "spyReady"; ready: boolean }
+  | { type: "spyAccuse"; targetId: string | null }
   | { type: "playAgain" };
 
 export type ServerMessage =

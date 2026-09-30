@@ -223,6 +223,24 @@ function handleMessage(
       lobbyManager.broadcastGameState(lobby);
       return;
     }
+    case "spyVoteSwap": {
+      const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
+      lobbyManager.spyVoteSwap(lobby, meta.playerId, message.vote === true);
+      lobbyManager.broadcastGameState(lobby);
+      return;
+    }
+    case "spyReady": {
+      const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
+      lobbyManager.spyReady(lobby, meta.playerId, message.ready === true);
+      lobbyManager.broadcastGameState(lobby);
+      return;
+    }
+    case "spyAccuse": {
+      const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
+      lobbyManager.spyAccuse(lobby, meta.playerId, typeof message.targetId === "string" ? message.targetId : null);
+      lobbyManager.broadcastGameState(lobby);
+      return;
+    }
     case "playAgain": {
       const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
       lobbyManager.playAgain(lobby, meta.playerId);

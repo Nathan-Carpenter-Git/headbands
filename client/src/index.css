@@ -837,6 +837,11 @@ input {
   color: #1c1a15;
 }
 
+.badge-danger {
+  background: var(--color-danger);
+  color: #ffffff;
+}
+
 /* ---------- Category list ---------- */
 
 .category-list {
@@ -968,6 +973,213 @@ input {
   color: var(--color-text-faint);
 }
 
+/* ---------- Game mode picker (lobby settings) ---------- */
+
+.mode-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.mode-option {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border: var(--border-w) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  box-shadow: var(--shadow-hard-sm);
+  transition: background-color 100ms ease, transform 100ms ease, box-shadow 100ms ease;
+}
+
+.mode-option:hover {
+  background: var(--color-surface-hover);
+}
+
+.mode-option[aria-pressed="true"] {
+  background: var(--color-accent-muted);
+  border-color: var(--color-accent);
+  box-shadow: 3px 3px 0 var(--color-accent);
+}
+
+.mode-option-label {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.mode-option-summary {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+/* ---------- Spybands round ---------- */
+
+.secret-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  border: var(--border-w) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-accent-muted);
+  box-shadow: var(--shadow-hard);
+}
+
+.secret-card.is-spy {
+  background: var(--color-danger-muted);
+}
+
+.secret-card-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.secret-card-value {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.secret-card.is-spy .secret-card-value {
+  color: var(--color-danger);
+}
+
+.secret-card-hint {
+  max-width: 38ch;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.tally {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.vote-row {
+  padding: var(--space-2);
+  margin: 0 calc(-1 * var(--space-2));
+  border-radius: var(--radius-md);
+  transition: background-color 150ms ease;
+}
+
+.vote-row.is-locking {
+  background: var(--color-danger-muted);
+}
+
+.vote-count {
+  min-width: 52px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Every row reserves the same button slot, so vote counts line up even on the viewer's own row. */
+.vote-row .btn,
+.vote-button-spacer {
+  width: 76px;
+  flex-shrink: 0;
+}
+
+.lock-in {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border: var(--border-w) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-danger-muted);
+  box-shadow: var(--shadow-hard);
+}
+
+.lock-in-seconds {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--border-w) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-danger);
+  font-variant-numeric: tabular-nums;
+}
+
+.lock-in-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lock-in-text strong {
+  font-size: 16px;
+  color: var(--color-text);
+}
+
+/* ---------- Spybands results ---------- */
+
+.outcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-w) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+}
+
+.outcome-caught {
+  background: var(--color-success-muted);
+}
+
+.outcome-escaped {
+  background: var(--color-danger-muted);
+}
+
+.outcome-headline {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.outcome-detail {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.outcome-card {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Placements (results view) ---------- */
 
 .placement-list {
@@ -996,11 +1208,14 @@ input {
   flex-shrink: 0;
 }
 
-.placement-row:nth-child(1) .placement-rank {
+.placement-rank.is-first {
   color: var(--color-accent);
 }
 
 .placement-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: 14px;
   font-weight: 700;
   /* Names take priority over the secondary card text and shouldn't shrink or truncate;

@@ -1,8 +1,8 @@
-import type { RoundStateDTO } from "@headbands/shared";
+import type { HeadbandsRoundStateDTO } from "@headbands/shared";
 import { useLobby } from "../state/useLobby";
 import { Avatar } from "../components/Avatar";
 
-export function RoundView({ round }: { round: RoundStateDTO }) {
+export function RoundView({ round }: { round: HeadbandsRoundStateDTO }) {
   const { myPlayerId, swapCard, revealCard } = useLobby();
   const me = round.players.find((p) => p.id === myPlayerId);
 

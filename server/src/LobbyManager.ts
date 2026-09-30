@@ -4,6 +4,9 @@ import {
   CATEGORY_LIMITS,
   DEFAULT_SETTINGS,
   GAME_LIMITS,
+  GAME_MODES,
+  SPYBANDS_RULES,
+  majorityOf,
   type CategorySummaryDTO,
   type CategoryUploadDTO,
   type LobbySettingsDTO,
@@ -13,6 +16,9 @@ import {
   type RoundPlayerViewDTO,
   type RoundResultsDTO,
   type RoundStateDTO,
+  type SpybandsOutcome,
+  type SpybandsPlayerViewDTO,
+  type SpybandsStage,
 } from "@headbands/shared";
 import { generateLobbyCode } from "./lobbyCodes.js";
 import { getCategoryById, type Category } from "./baseCategories.js";
@@ -37,7 +43,8 @@ interface RoundPlayer {
   pointsAwarded: number;
 }
 
-interface Game {
+interface HeadbandsGame {
+  mode: "headbands";
   roundNumber: number;
   categoryName: string;
   /** Fixed at round start: the denominator for scoring, even if someone later disconnects. */
@@ -45,6 +52,40 @@ interface Game {
   players: Map<string, RoundPlayer>;
   unusedCards: string[];
 }
+
+interface SpyPlayer {
+  votedSwap: boolean;
+  ready: boolean;
+  accusing: string | null;
+}
+
+interface SpybandsResult {
+  outcome: SpybandsOutcome;
+  accusedName: string | null;
+  votesReceived: Map<string, number>;
+  pointsAwarded: Map<string, number>;
+}
+
+interface SpybandsGame {
+  mode: "spybands";
+  roundNumber: number;
+  categoryName: string;
+  stage: SpybandsStage;
+  card: string;
+  /** Every card in the category, used to refill the swap pile once it runs dry. */
+  categoryCards: string[];
+  /** Cards not yet shown this round, drawn from when a swap vote passes. */
+  swapPile: string[];
+  spyId: string;
+  /** Kept separately so the results can still name the spy if they leave mid-round. */
+  spyName: string;
+  players: Map<string, SpyPlayer>;
+  lockIn: { targetId: string; endsAt: number; timer: ReturnType<typeof setTimeout> } | null;
+  /** Set once the round is over. */
+  result: SpybandsResult | null;
+}
+
+type Game = HeadbandsGame | SpybandsGame;
 
 export interface Lobby {
   code: string;
@@ -58,8 +99,18 @@ export interface Lobby {
 
 export class LobbyError extends Error {}
 
+export interface LobbyManagerOptions {
+  /** How long a Spybands majority accusation must hold before it locks in. Shortened in tests. */
+  spyLockInMs?: number;
+}
+
 export class LobbyManager {
   private lobbies = new Map<string, Lobby>();
+  private readonly spyLockInMs: number;
+
+  constructor({ spyLockInMs = SPYBANDS_RULES.lockInMs }: LobbyManagerOptions = {}) {
+    this.spyLockInMs = spyLockInMs;
+  }
 
   getLobby(code: string): Lobby | undefined {
     return this.lobbies.get(code.toUpperCase());
@@ -143,6 +194,14 @@ export class LobbyManager {
     if (lobby.phase === "round") {
       throw new LobbyError("Can't change settings while a round is in progress");
     }
+    if (settings.gameMode !== undefined) {
+      if (!Object.hasOwn(GAME_MODES, settings.gameMode)) {
+        throw new LobbyError("Unknown game mode");
+      }
+      if (lobby.game && settings.gameMode !== lobby.settings.gameMode) {
+        throw new LobbyError("Can't switch game modes in the middle of a game");
+      }
+    }
     if (settings.rounds !== undefined) {
       if (
         !Number.isInteger(settings.rounds) ||
@@ -168,8 +227,9 @@ export class LobbyManager {
     if (lobby.phase === "round") {
       throw new LobbyError("A round is already in progress");
     }
-    if (lobby.players.size < 2) {
-      throw new LobbyError("Need at least 2 players to start");
+    const mode = GAME_MODES[lobby.settings.gameMode];
+    if (lobby.players.size < mode.minPlayers) {
+      throw new LobbyError(`${mode.label} needs at least ${mode.minPlayers} players`);
     }
     if (lobby.settings.categoryIds.length === 0) {
       throw new LobbyError("Pick at least one category before starting");
@@ -184,6 +244,11 @@ export class LobbyManager {
     if (!category) {
       throw new LobbyError("Selected category no longer exists");
     }
+    if (lobby.settings.gameMode === "spybands") {
+      this.startSpybandsRound(lobby, roundNumber, category);
+      return;
+    }
+
     const playerIds = shuffle([...lobby.players.keys()]);
     const { dealt, unusedCards } = this.dealCards(category.cards, playerIds.length);
 
@@ -193,6 +258,7 @@ export class LobbyManager {
     });
 
     lobby.game = {
+      mode: "headbands",
       roundNumber,
       categoryName: category.name,
       roundPlayerCount: playerIds.length,
@@ -202,12 +268,32 @@ export class LobbyManager {
     lobby.phase = "round";
   }
 
+  private startSpybandsRound(lobby: Lobby, roundNumber: number, category: Category): void {
+    const [card, ...rest] = shuffle(category.cards);
+    const playerIds = [...lobby.players.keys()];
+    const spyId = playerIds[Math.floor(Math.random() * playerIds.length)];
+    lobby.game = {
+      mode: "spybands",
+      roundNumber,
+      categoryName: category.name,
+      stage: "choosing",
+      card,
+      categoryCards: category.cards,
+      swapPile: rest,
+      spyId,
+      spyName: lobby.players.get(spyId)!.name,
+      players: new Map(playerIds.map((id) => [id, { votedSwap: false, ready: false, accusing: null }])),
+      lockIn: null,
+      result: null,
+    };
+    lobby.phase = "round";
+  }
+
   swapCard(lobby: Lobby, playerId: string): void {
-    const rp = this.requireRoundPlayer(lobby, playerId);
+    const { game, rp } = this.requireHeadbandsPlayer(lobby, playerId);
     if (rp.revealed) {
       throw new LobbyError("You've already revealed your card");
     }
-    const game = lobby.game!;
     if (game.unusedCards.length === 0) {
       throw new LobbyError("No more cards left to swap to");
     }
@@ -218,13 +304,45 @@ export class LobbyManager {
   }
 
   revealCard(lobby: Lobby, playerId: string): void {
-    const rp = this.requireRoundPlayer(lobby, playerId);
+    const { game, rp } = this.requireHeadbandsPlayer(lobby, playerId);
     if (rp.revealed) {
       throw new LobbyError("You've already revealed your card");
     }
-    this.revealPlayer(lobby.game!, rp);
-    this.maybeAutoRevealLast(lobby.game!, lobby.settings.autoRevealLast);
-    this.maybeCompleteRound(lobby);
+    this.revealPlayer(game, rp);
+    this.maybeAutoRevealLast(game, lobby.settings.autoRevealLast);
+    this.maybeCompleteRound(lobby, game);
+  }
+
+  /** Spybands "choosing" stage: vote for (or withdraw a vote for) a different shared card. */
+  spyVoteSwap(lobby: Lobby, playerId: string, vote: boolean): void {
+    const { game, sp } = this.requireSpyPlayer(lobby, playerId, "choosing");
+    sp.votedSwap = vote;
+    // Wanting a new card and being ready to play with this one are opposites.
+    if (vote) sp.ready = false;
+    this.settleChoosingStage(game);
+  }
+
+  /** Spybands "choosing" stage: accept the current card, or take that back. */
+  spyReady(lobby: Lobby, playerId: string, ready: boolean): void {
+    const { game, sp } = this.requireSpyPlayer(lobby, playerId, "choosing");
+    sp.ready = ready;
+    if (ready) sp.votedSwap = false;
+    this.settleChoosingStage(game);
+  }
+
+  /** Spybands "voting" stage: accuse someone of being the spy, or withdraw the accusation. */
+  spyAccuse(lobby: Lobby, playerId: string, targetId: string | null): void {
+    const { game, sp } = this.requireSpyPlayer(lobby, playerId, "voting");
+    if (targetId !== null) {
+      if (targetId === playerId) {
+        throw new LobbyError("You can't vote for yourself");
+      }
+      if (!game.players.has(targetId)) {
+        throw new LobbyError("That player isn't in this round");
+      }
+    }
+    sp.accusing = targetId;
+    this.settleLockIn(lobby, game);
   }
 
   playAgain(lobby: Lobby, playerId: string): void {
@@ -243,6 +361,7 @@ export class LobbyManager {
   removePlayer(lobby: Lobby, playerId: string): boolean {
     lobby.players.delete(playerId);
     if (lobby.players.size === 0) {
+      if (lobby.game?.mode === "spybands") this.cancelLockIn(lobby.game);
       this.lobbies.delete(lobby.code);
       return true;
     }
@@ -251,10 +370,13 @@ export class LobbyManager {
       const next = lobby.players.values().next().value as Player;
       next.isLeader = true;
     }
-    if (lobby.phase === "round" && lobby.game) {
+    if (lobby.phase === "round" && lobby.game?.mode === "headbands") {
       lobby.game.players.delete(playerId);
       this.maybeAutoRevealLast(lobby.game, lobby.settings.autoRevealLast);
-      this.maybeCompleteRound(lobby);
+      this.maybeCompleteRound(lobby, lobby.game);
+    }
+    if (lobby.phase === "round" && lobby.game?.mode === "spybands") {
+      this.removeSpyPlayer(lobby, lobby.game, playerId);
     }
     return false;
   }
@@ -273,7 +395,34 @@ export class LobbyManager {
   toRoundStateDTO(lobby: Lobby, forPlayerId: string): RoundStateDTO | null {
     if (!lobby.game) return null;
     const game = lobby.game;
+    if (game.mode === "spybands") {
+      const isSpy = forPlayerId === game.spyId;
+      return {
+        mode: "spybands",
+        roundNumber: game.roundNumber,
+        totalRounds: lobby.settings.rounds,
+        categoryName: game.categoryName,
+        stage: game.stage,
+        isSpy,
+        card: isSpy ? null : game.card,
+        majority: majorityOf(game.players.size),
+        players: [...game.players.entries()].map(
+          ([id, sp]): SpybandsPlayerViewDTO => ({
+            id,
+            name: lobby.players.get(id)?.name ?? "?",
+            connected: lobby.players.get(id)?.connected ?? false,
+            votedSwap: sp.votedSwap,
+            ready: sp.ready,
+            accusing: sp.accusing,
+          }),
+        ),
+        lockIn: game.lockIn
+          ? { targetId: game.lockIn.targetId, remainingMs: Math.max(0, game.lockIn.endsAt - Date.now()) }
+          : null,
+      };
+    }
     return {
+      mode: "headbands",
       roundNumber: game.roundNumber,
       totalRounds: lobby.settings.rounds,
       categoryName: game.categoryName,
@@ -293,6 +442,31 @@ export class LobbyManager {
   toRoundResultsDTO(lobby: Lobby): RoundResultsDTO | null {
     if (!lobby.game) return null;
     const game = lobby.game;
+    const gameOver = game.roundNumber >= lobby.settings.rounds;
+    if (game.mode === "spybands") {
+      if (!game.result) return null;
+      const result = game.result;
+      return {
+        mode: "spybands",
+        roundNumber: game.roundNumber,
+        totalRounds: lobby.settings.rounds,
+        categoryName: game.categoryName,
+        gameOver,
+        outcome: result.outcome,
+        card: game.card,
+        spyName: game.spyName,
+        accusedName: result.accusedName,
+        players: [...game.players.keys()]
+          .map((id) => ({
+            playerId: id,
+            name: lobby.players.get(id)?.name ?? "?",
+            isSpy: id === game.spyId,
+            votesReceived: result.votesReceived.get(id) ?? 0,
+            pointsAwarded: result.pointsAwarded.get(id) ?? 0,
+          }))
+          .sort((a, b) => Number(b.isSpy) - Number(a.isSpy) || b.votesReceived - a.votesReceived),
+      };
+    }
     const placements: PlacementDTO[] = [...game.players.entries()]
       .map(([id, rp]): PlacementDTO => ({
         playerId: id,
@@ -303,10 +477,11 @@ export class LobbyManager {
       }))
       .sort((a, b) => a.place - b.place);
     return {
+      mode: "headbands",
       roundNumber: game.roundNumber,
       totalRounds: lobby.settings.rounds,
       categoryName: game.categoryName,
-      gameOver: game.roundNumber >= lobby.settings.rounds,
+      gameOver,
       placements,
     };
   }
@@ -414,13 +589,13 @@ export class LobbyManager {
     return ids[(roundNumber - 1) % ids.length];
   }
 
-  private revealPlayer(game: Game, rp: RoundPlayer): void {
+  private revealPlayer(game: HeadbandsGame, rp: RoundPlayer): void {
     const revealedCount = [...game.players.values()].filter((p) => p.revealed).length;
     rp.revealed = true;
     rp.place = revealedCount + 1;
   }
 
-  private maybeAutoRevealLast(game: Game, autoRevealLast: boolean): void {
+  private maybeAutoRevealLast(game: HeadbandsGame, autoRevealLast: boolean): void {
     if (!autoRevealLast) return;
     const remaining = [...game.players.values()].filter((p) => !p.revealed);
     if (remaining.length === 1) {
@@ -428,9 +603,8 @@ export class LobbyManager {
     }
   }
 
-  private maybeCompleteRound(lobby: Lobby): void {
-    const game = lobby.game;
-    if (!game || game.players.size === 0) return;
+  private maybeCompleteRound(lobby: Lobby, game: HeadbandsGame): void {
+    if (game.players.size === 0) return;
     const allRevealed = [...game.players.values()].every((p) => p.revealed);
     if (!allRevealed) return;
     for (const [pid, rp] of game.players) {
@@ -447,15 +621,137 @@ export class LobbyManager {
     return roundPlayerCount - place + 1;
   }
 
-  private requireRoundPlayer(lobby: Lobby, playerId: string): RoundPlayer {
-    if (lobby.phase !== "round" || !lobby.game) {
+  /** Swaps the card once a majority wants a new one, and starts the vote once everyone's ready. */
+  private settleChoosingStage(game: SpybandsGame): void {
+    const players = [...game.players.values()];
+    const majority = majorityOf(game.players.size);
+    if (players.filter((p) => p.votedSwap).length >= majority) {
+      if (game.swapPile.length === 0) {
+        game.swapPile = shuffle(game.categoryCards.filter((c) => c !== game.card));
+      }
+      game.card = game.swapPile.pop()!;
+      // A new card needs everyone to look at it and agree again.
+      for (const p of players) {
+        p.votedSwap = false;
+        p.ready = false;
+      }
+      return;
+    }
+    if (players.every((p) => p.ready)) {
+      game.stage = "voting";
+    }
+  }
+
+  /**
+   * Starts the lock-in countdown when an accusation reaches a majority, and cancels it if that
+   * majority falls apart before it runs out. A majority that just changes voters keeps its clock.
+   */
+  private settleLockIn(lobby: Lobby, game: SpybandsGame): void {
+    const votes = this.tallyAccusations(game);
+    const majority = majorityOf(game.players.size);
+    const targetId = [...votes].find(([, count]) => count >= majority)?.[0] ?? null;
+    if (game.lockIn?.targetId === targetId) return;
+    this.cancelLockIn(game);
+    if (targetId === null) return;
+    const timer = setTimeout(() => {
+      if (lobby.game !== game || game.lockIn?.targetId !== targetId) return;
+      this.finishSpybandsRound(lobby, game, targetId === game.spyId ? "caught" : "escaped", targetId);
+      this.broadcastGameState(lobby);
+    }, this.spyLockInMs);
+    game.lockIn = { targetId, endsAt: Date.now() + this.spyLockInMs, timer };
+  }
+
+  private cancelLockIn(game: SpybandsGame): void {
+    if (!game.lockIn) return;
+    clearTimeout(game.lockIn.timer);
+    game.lockIn = null;
+  }
+
+  private tallyAccusations(game: SpybandsGame): Map<string, number> {
+    const votes = new Map<string, number>();
+    for (const p of game.players.values()) {
+      if (p.accusing !== null) votes.set(p.accusing, (votes.get(p.accusing) ?? 0) + 1);
+    }
+    return votes;
+  }
+
+  private finishSpybandsRound(
+    lobby: Lobby,
+    game: SpybandsGame,
+    outcome: SpybandsOutcome,
+    accusedId: string | null = null,
+  ): void {
+    this.cancelLockIn(game);
+    const pointsAwarded = new Map<string, number>();
+    for (const id of game.players.keys()) {
+      const isSpy = id === game.spyId;
+      let points = 0;
+      if (outcome === "caught" && !isSpy) points = SPYBANDS_RULES.pointsForCatchingSpy;
+      if (outcome === "escaped" && isSpy) points = SPYBANDS_RULES.pointsForSpyEscaping;
+      pointsAwarded.set(id, points);
+      const player = lobby.players.get(id);
+      if (player) player.score += points;
+    }
+    game.result = {
+      outcome,
+      accusedName: accusedId ? (lobby.players.get(accusedId)?.name ?? "?") : null,
+      votesReceived: this.tallyAccusations(game),
+      pointsAwarded,
+    };
+    lobby.phase = "results";
+  }
+
+  /** A player left for good mid-round: call the round off if it can't go on, else drop their votes. */
+  private removeSpyPlayer(lobby: Lobby, game: SpybandsGame, playerId: string): void {
+    game.players.delete(playerId);
+    if (playerId === game.spyId) {
+      this.finishSpybandsRound(lobby, game, "spyLeft");
+      return;
+    }
+    if (game.players.size < GAME_MODES.spybands.minPlayers) {
+      this.finishSpybandsRound(lobby, game, "tooFewPlayers");
+      return;
+    }
+    for (const p of game.players.values()) {
+      if (p.accusing === playerId) p.accusing = null;
+    }
+    // The majority just shrank, so a pending swap, ready check, or accusation may now pass.
+    if (game.stage === "choosing") {
+      this.settleChoosingStage(game);
+    } else {
+      this.settleLockIn(lobby, game);
+    }
+  }
+
+  private requireHeadbandsPlayer(lobby: Lobby, playerId: string): { game: HeadbandsGame; rp: RoundPlayer } {
+    const game = lobby.game;
+    if (lobby.phase !== "round" || game?.mode !== "headbands") {
       throw new LobbyError("No round is in progress");
     }
-    const rp = lobby.game.players.get(playerId);
+    const rp = game.players.get(playerId);
     if (!rp) {
       throw new LobbyError("You're not part of the current round");
     }
-    return rp;
+    return { game, rp };
+  }
+
+  private requireSpyPlayer(
+    lobby: Lobby,
+    playerId: string,
+    stage: SpybandsStage,
+  ): { game: SpybandsGame; sp: SpyPlayer } {
+    const game = lobby.game;
+    if (lobby.phase !== "round" || game?.mode !== "spybands") {
+      throw new LobbyError("No round is in progress");
+    }
+    const sp = game.players.get(playerId);
+    if (!sp) {
+      throw new LobbyError("You're not part of the current round");
+    }
+    if (game.stage !== stage) {
+      throw new LobbyError(stage === "choosing" ? "The card is already locked in" : "Voting hasn't started yet");
+    }
+    return { game, sp };
   }
 
   private requireLeader(lobby: Lobby, playerId: string): void {

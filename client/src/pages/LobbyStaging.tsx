@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { GAME_LIMITS, type LobbyStateDTO } from "@headbands/shared";
+import { GAME_LIMITS, GAME_MODES, type GameMode, type LobbyStateDTO } from "@headbands/shared";
 import { useLobby } from "../state/useLobby";
 import { useLocalCategories } from "../state/useLocalCategories";
 import { Avatar } from "../components/Avatar";
@@ -19,6 +19,8 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
     setRoundsDraft(String(lobby.settings.rounds));
   }
   const me = lobby.players.find((p) => p.id === myPlayerId);
+  const mode = GAME_MODES[lobby.settings.gameMode];
+  const enoughPlayers = lobby.players.length >= mode.minPlayers;
   const inviteLink = `${window.location.origin}/lobby/${lobby.code}`;
 
   const lobbyCustomIds = new Set(lobbyCustomCategories.map((c) => c.id));
@@ -74,7 +76,7 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
                 {!p.connected && <span className="badge badge-warning">Reconnecting</span>}
               </span>
               <span className="player-meta">
-                <span className="player-score">{p.score}</span> pts
+                <span className="player-score">{p.score}</span> {p.score === 1 ? "pt" : "pts"}
               </span>
             </li>
           ))}
@@ -89,6 +91,23 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
               Manage categories
             </Link>
           </div>
+
+          <div className="mode-picker" role="group" aria-label="Game mode">
+            {(Object.keys(GAME_MODES) as GameMode[]).map((id) => (
+              <button
+                key={id}
+                type="button"
+                className="mode-option"
+                aria-pressed={lobby.settings.gameMode === id}
+                onClick={() => updateSettings({ gameMode: id })}
+              >
+                <span className="mode-option-label">{GAME_MODES[id].label}</span>
+                <span className="mode-option-summary">{GAME_MODES[id].summary}</span>
+              </button>
+            ))}
+          </div>
+
+          <hr className="divider" />
 
           <CategoryPicker
             options={pickerOptions}
@@ -136,24 +155,35 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
             Randomize category order
           </label>
 
-          <label className="checkbox-option">
-            <input
-              type="checkbox"
-              checked={lobby.settings.autoRevealLast}
-              onChange={(e) => updateSettings({ autoRevealLast: e.target.checked })}
-            />
-            Auto-reveal the last remaining player
-          </label>
+          {lobby.settings.gameMode === "headbands" && (
+            <label className="checkbox-option">
+              <input
+                type="checkbox"
+                checked={lobby.settings.autoRevealLast}
+                onChange={(e) => updateSettings({ autoRevealLast: e.target.checked })}
+              />
+              Auto-reveal the last remaining player
+            </label>
+          )}
 
           <hr className="divider" />
 
-          <button type="button" className="btn btn-primary btn-block" onClick={startRound} disabled={lobby.players.length < 2}>
-            Start Game
+          <button type="button" className="btn btn-primary btn-block" onClick={startRound} disabled={!enoughPlayers}>
+            Start {mode.label}
           </button>
-          {lobby.players.length < 2 && <p className="empty-hint">Need at least 2 players to start.</p>}
+          {!enoughPlayers && (
+            <p className="empty-hint">
+              {mode.label} needs at least {mode.minPlayers} players to start.
+            </p>
+          )}
         </div>
       ) : (
         <div className="card">
+          <div className="row-between">
+            <h2>Game mode</h2>
+            <span className="badge badge-accent">{mode.label}</span>
+          </div>
+          <p className="lede">{mode.summary}</p>
           <p className="lede">Waiting for the leader to start the game…</p>
         </div>
       )}

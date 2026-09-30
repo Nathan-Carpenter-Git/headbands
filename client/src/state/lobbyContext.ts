@@ -27,6 +27,10 @@ export interface LobbyContextValue {
   startRound: () => void;
   swapCard: () => void;
   revealCard: () => void;
+  spyVoteSwap: (vote: boolean) => void;
+  spyReady: (ready: boolean) => void;
+  /** Accuse a player of being the spy, or pass null to withdraw the accusation. */
+  spyAccuse: (targetId: string | null) => void;
   playAgain: () => void;
 }
 

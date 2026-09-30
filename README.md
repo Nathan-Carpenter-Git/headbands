@@ -4,6 +4,8 @@ An online version of the classic "guess the card on your own forehead" party gam
 Create a lobby, share the invite link, and everyone can see the card on your head except you.
 Ask yes/no questions out loud over a voice call (Discord, FaceTime, whatever you use), then reveal once you've got it.
 
+There is also a second game mode, Spybands, a Spyfall style game where everyone shares one card except a hidden spy, and the group votes to catch them.
+
 See [RULES.md](./RULES.md) for how to play.
 
 ## Project layout

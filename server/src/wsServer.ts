@@ -241,6 +241,18 @@ function handleMessage(
       lobbyManager.broadcastGameState(lobby);
       return;
     }
+    case "spyStartGuess": {
+      const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
+      lobbyManager.spyStartGuess(lobby, meta.playerId);
+      lobbyManager.broadcastGameState(lobby);
+      return;
+    }
+    case "spyFinishGuess": {
+      const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
+      lobbyManager.spyFinishGuess(lobby, meta.playerId, message.correct === true);
+      lobbyManager.broadcastGameState(lobby);
+      return;
+    }
     case "playAgain": {
       const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
       lobbyManager.playAgain(lobby, meta.playerId);

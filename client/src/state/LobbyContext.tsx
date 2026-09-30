@@ -237,6 +237,8 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
   const spyVoteSwap = useCallback((vote: boolean) => send({ type: "spyVoteSwap", vote }), [send]);
   const spyReady = useCallback((ready: boolean) => send({ type: "spyReady", ready }), [send]);
   const spyAccuse = useCallback((targetId: string | null) => send({ type: "spyAccuse", targetId }), [send]);
+  const spyStartGuess = useCallback(() => send({ type: "spyStartGuess" }), [send]);
+  const spyFinishGuess = useCallback((correct: boolean) => send({ type: "spyFinishGuess", correct }), [send]);
   const playAgain = useCallback(() => send({ type: "playAgain" }), [send]);
   const dismissError = useCallback(() => setErrorMessage(null), []);
 
@@ -263,6 +265,8 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
         spyVoteSwap,
         spyReady,
         spyAccuse,
+        spyStartGuess,
+        spyFinishGuess,
         playAgain,
       }}
     >

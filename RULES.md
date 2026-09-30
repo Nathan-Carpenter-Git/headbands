@@ -97,12 +97,26 @@ The spy takes part in all of this too, so they can blend in by voting and readyi
 4. When the countdown reaches zero, the vote is locked in.
    Everyone's role is revealed, and the spy finally sees the card.
 
+### The spy's guess
+
+Instead of waiting for the vote, the spy can try to guess the card, as long as no vote is counting down yet.
+
+1. The spy says their guess out loud, then taps **Guess the card**.
+   Voting pauses for everyone.
+2. The card appears on the spy's screen, and they have five seconds to tap **I got it** if it matches what they said, or **I missed it** if it doesn't.
+   If time runs out, it counts as a miss.
+3. The spy only gets one guess per round, and the round ends either way.
+
+This runs on trust: nobody checks the spy's answer, so be honest.
+
 ### Scoring
 
 | Result                    | Points                          |
 | ------------------------- | ------------------------------- |
 | The spy is voted out      | Every other player gets 1 point |
 | Someone else is voted out | The spy gets 2 points           |
+| The spy guesses the card  | The spy gets 4 points           |
+| The spy guesses wrong     | Every other player gets 1 point |
 
 Points add up across rounds, just like in Headbands.
 

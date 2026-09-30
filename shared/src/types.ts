@@ -100,7 +100,8 @@ export interface HeadbandsRoundResultsDTO {
 /**
  * A Spybands round runs in two stages. In "choosing", everyone but the spy sees the shared card,
  * a majority can vote to swap it for a new one, and the round moves on once everyone readies up.
- * In "voting", the only action left is accusing someone of being the spy.
+ * In "voting", players accuse someone of being the spy, and the spy may instead try one guess at
+ * the card, which freezes the vote while they settle it.
  */
 export type SpybandsStage = "choosing" | "voting";
 
@@ -124,22 +125,28 @@ export interface SpybandsRoundStateDTO {
   stage: SpybandsStage;
   /** Whether the viewer is the spy. Nobody learns who the spy is until the round ends. */
   isSpy: boolean;
-  /** The shared card, or null when the viewer is the spy. */
+  /** The shared card, or null when the viewer is the spy and isn't guessing it yet. */
   card: string | null;
   /** Votes needed to swap the card, and to lock in an accusation: more than half the players. */
   majority: number;
   players: SpybandsPlayerViewDTO[];
   /** Set while an accusation holds a majority and is counting down to lock in. */
   lockIn: { targetId: string; remainingMs: number } | null;
+  /**
+   * Set while the spy is guessing the card: they've said a guess out loud, now see the card, and
+   * must claim they got it before the time runs out, or it counts as a miss. Voting is frozen.
+   */
+  guess: { remainingMs: number } | null;
 }
 
 export type RoundStateDTO = HeadbandsRoundStateDTO | SpybandsRoundStateDTO;
 
 /**
- * "caught" and "escaped" are the normal endings. "spyLeft" and "tooFewPlayers" mean the round was
- * called off because the spy, or enough players, dropped out for good, so nobody scores.
+ * "caught" and "escaped" end the vote, "spyGuessed" and "spyMissed" end the spy's guess at the card.
+ * "spyLeft" and "tooFewPlayers" mean the round was called off because the spy, or enough players,
+ * dropped out for good, so nobody scores.
  */
-export type SpybandsOutcome = "caught" | "escaped" | "spyLeft" | "tooFewPlayers";
+export type SpybandsOutcome = "caught" | "escaped" | "spyGuessed" | "spyMissed" | "spyLeft" | "tooFewPlayers";
 
 export interface SpybandsResultPlayerDTO {
   playerId: string;
@@ -159,7 +166,7 @@ export interface SpybandsRoundResultsDTO {
   outcome: SpybandsOutcome;
   card: string;
   spyName: string;
-  /** Who the vote locked in on. Null when the round was called off. */
+  /** Who the vote locked in on. Null when the spy guessed or the round was called off. */
   accusedName: string | null;
   players: SpybandsResultPlayerDTO[];
 }

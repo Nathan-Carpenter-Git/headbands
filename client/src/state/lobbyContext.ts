@@ -31,6 +31,10 @@ export interface LobbyContextValue {
   spyReady: (ready: boolean) => void;
   /** Accuse a player of being the spy, or pass null to withdraw the accusation. */
   spyAccuse: (targetId: string | null) => void;
+  /** As the spy, after saying a guess out loud: see the card and freeze the vote. */
+  spyStartGuess: () => void;
+  /** As the guessing spy: say whether the guess matched the card. */
+  spyFinishGuess: (correct: boolean) => void;
   playAgain: () => void;
 }
 

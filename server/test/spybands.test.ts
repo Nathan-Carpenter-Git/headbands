@@ -3,12 +3,13 @@ import { once } from "node:events";
 import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
-import type { ClientMessage, ServerMessage, SpybandsRoundResultsDTO, SpybandsRoundStateDTO } from "@headbands/shared";
+import { SPYBANDS_RULES, type ClientMessage, type ServerMessage, type SpybandsRoundResultsDTO, type SpybandsRoundStateDTO } from "@headbands/shared";
 import { LobbyManager } from "../src/LobbyManager.js";
 import { attachWsServer } from "../src/wsServer.js";
 import { baseCategories } from "../src/baseCategories.js";
 
 const LOCK_IN_MS = 200;
+const GUESS_MS = 200;
 const GRACE_MS = 150;
 
 let wss: WebSocketServer;
@@ -17,7 +18,7 @@ let url: string;
 before(async () => {
   wss = new WebSocketServer({ port: 0 });
   await once(wss, "listening");
-  attachWsServer(wss, new LobbyManager({ spyLockInMs: LOCK_IN_MS }), { reconnectGraceMs: GRACE_MS });
+  attachWsServer(wss, new LobbyManager({ spyLockInMs: LOCK_IN_MS, spyGuessMs: GUESS_MS }), { reconnectGraceMs: GRACE_MS });
   url = `ws://localhost:${(wss.address() as AddressInfo).port}`;
 });
 
@@ -343,4 +344,89 @@ test("a resumed spy still can't see the card", async () => {
   assert.equal(resumed.round?.mode, "spybands");
   assert.equal(resumed.round.isSpy, true);
   assert.equal(resumed.round.card, null);
+});
+
+function lastError(client: Client): string | undefined {
+  return client.messages.findLast((m) => m.type === "error")?.message;
+}
+
+test("a spy who guesses the card sees it, freezes the vote, and wins 4 points by claiming it", async () => {
+  const clients = await spybandsLobby(3);
+  const { spy, others } = await startRound(clients);
+  const card = round(others[0]).card;
+  await everyoneReady(clients);
+  send(others[0], { type: "spyAccuse", targetId: others[1].playerId });
+  await wait(30);
+
+  send(spy, { type: "spyStartGuess" });
+  await wait(30);
+  assert.equal(round(spy).card, card);
+  assert.ok(round(others[0]).guess!.remainingMs > 0);
+
+  // Nobody can vote while the spy is guessing, so this majority never forms.
+  send(others[1], { type: "spyAccuse", targetId: others[0].playerId });
+  send(spy, { type: "spyAccuse", targetId: others[0].playerId });
+  await wait(30);
+  assert.equal(lastError(others[1]), "The spy is guessing the card");
+  assert.equal(round(others[0]).lockIn, null);
+
+  send(spy, { type: "spyFinishGuess", correct: true });
+  await wait(30);
+  const r = results(spy);
+  assert.equal(r.outcome, "spyGuessed");
+  assert.equal(r.accusedName, null);
+  assert.equal(r.players.find((p) => p.playerId === spy.playerId)!.pointsAwarded, SPYBANDS_RULES.pointsForSpyGuessing);
+  for (const c of others) assert.equal(r.players.find((p) => p.playerId === c.playerId)!.pointsAwarded, 0);
+});
+
+test("a spy who misses the card gives everyone else a point", async () => {
+  const clients = await spybandsLobby(3);
+  const { spy, others } = await startRound(clients);
+  await everyoneReady(clients);
+
+  send(spy, { type: "spyStartGuess" });
+  await wait(30);
+  send(spy, { type: "spyFinishGuess", correct: false });
+  await wait(30);
+  const r = results(spy);
+  assert.equal(r.outcome, "spyMissed");
+  assert.equal(r.players.find((p) => p.playerId === spy.playerId)!.pointsAwarded, 0);
+  for (const c of others) assert.equal(r.players.find((p) => p.playerId === c.playerId)!.pointsAwarded, 1);
+});
+
+test("a spy who runs out of time to claim the guess misses it", async () => {
+  const clients = await spybandsLobby(3);
+  const { spy } = await startRound(clients);
+  await everyoneReady(clients);
+
+  send(spy, { type: "spyStartGuess" });
+  await wait(30);
+  assert.equal(phase(spy), "round");
+  await wait(GUESS_MS + 50);
+  assert.equal(phase(spy), "results");
+  assert.equal(results(spy).outcome, "spyMissed");
+});
+
+test("only the spy can guess, only while voting, and not once a vote is locking in", async () => {
+  const clients = await spybandsLobby(3);
+  const { spy, others } = await startRound(clients);
+
+  send(spy, { type: "spyStartGuess" });
+  await wait(30);
+  assert.equal(lastError(spy), "Voting hasn't started yet");
+  await everyoneReady(clients);
+
+  send(others[0], { type: "spyStartGuess" });
+  await wait(30);
+  assert.equal(lastError(others[0]), "Only the spy can guess the card");
+  send(others[0], { type: "spyFinishGuess", correct: true });
+  await wait(30);
+  assert.equal(lastError(others[0]), "You're not guessing the card");
+
+  for (const c of others) send(c, { type: "spyAccuse", targetId: spy.playerId });
+  await wait(30);
+  send(spy, { type: "spyStartGuess" });
+  await wait(30);
+  assert.equal(lastError(spy), "Too late, the vote is locking in");
+  assert.equal(round(spy).card, null);
 });

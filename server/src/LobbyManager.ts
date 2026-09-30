@@ -81,6 +81,8 @@ interface SpybandsGame {
   spyName: string;
   players: Map<string, SpyPlayer>;
   lockIn: { targetId: string; endsAt: number; timer: ReturnType<typeof setTimeout> } | null;
+  /** Set while the spy is guessing the card; runs out as a miss. */
+  guess: { endsAt: number; timer: ReturnType<typeof setTimeout> } | null;
   /** Set once the round is over. */
   result: SpybandsResult | null;
 }
@@ -102,14 +104,18 @@ export class LobbyError extends Error {}
 export interface LobbyManagerOptions {
   /** How long a Spybands majority accusation must hold before it locks in. Shortened in tests. */
   spyLockInMs?: number;
+  /** How long a guessing Spybands spy has to claim they got it. Shortened in tests. */
+  spyGuessMs?: number;
 }
 
 export class LobbyManager {
   private lobbies = new Map<string, Lobby>();
   private readonly spyLockInMs: number;
+  private readonly spyGuessMs: number;
 
-  constructor({ spyLockInMs = SPYBANDS_RULES.lockInMs }: LobbyManagerOptions = {}) {
+  constructor({ spyLockInMs = SPYBANDS_RULES.lockInMs, spyGuessMs = SPYBANDS_RULES.guessMs }: LobbyManagerOptions = {}) {
     this.spyLockInMs = spyLockInMs;
+    this.spyGuessMs = spyGuessMs;
   }
 
   getLobby(code: string): Lobby | undefined {
@@ -284,6 +290,7 @@ export class LobbyManager {
       spyName: lobby.players.get(spyId)!.name,
       players: new Map(playerIds.map((id) => [id, { votedSwap: false, ready: false, accusing: null }])),
       lockIn: null,
+      guess: null,
       result: null,
     };
     lobby.phase = "round";
@@ -333,6 +340,9 @@ export class LobbyManager {
   /** Spybands "voting" stage: accuse someone of being the spy, or withdraw the accusation. */
   spyAccuse(lobby: Lobby, playerId: string, targetId: string | null): void {
     const { game, sp } = this.requireSpyPlayer(lobby, playerId, "voting");
+    if (game.guess) {
+      throw new LobbyError("The spy is guessing the card");
+    }
     if (targetId !== null) {
       if (targetId === playerId) {
         throw new LobbyError("You can't vote for yourself");
@@ -343,6 +353,39 @@ export class LobbyManager {
     }
     sp.accusing = targetId;
     this.settleLockIn(lobby, game);
+  }
+
+  /**
+   * Spybands "voting" stage: the spy has said a guess out loud and wants to see the card. This
+   * freezes the vote, so it's only allowed before an accusation reaches a majority. The spy then
+   * has a few seconds to claim they got it, or it counts as a miss.
+   */
+  spyStartGuess(lobby: Lobby, playerId: string): void {
+    const { game } = this.requireSpyPlayer(lobby, playerId, "voting");
+    if (playerId !== game.spyId) {
+      throw new LobbyError("Only the spy can guess the card");
+    }
+    if (game.guess) {
+      throw new LobbyError("You're already guessing");
+    }
+    if (game.lockIn) {
+      throw new LobbyError("Too late, the vote is locking in");
+    }
+    const timer = setTimeout(() => {
+      if (lobby.game !== game || game.guess?.timer !== timer) return;
+      this.finishSpybandsRound(lobby, game, "spyMissed");
+      this.broadcastGameState(lobby);
+    }, this.spyGuessMs);
+    game.guess = { endsAt: Date.now() + this.spyGuessMs, timer };
+  }
+
+  /** Spybands: the guessing spy says whether their guess matched the card. */
+  spyFinishGuess(lobby: Lobby, playerId: string, correct: boolean): void {
+    const { game } = this.requireSpyPlayer(lobby, playerId, "voting");
+    if (playerId !== game.spyId || !game.guess) {
+      throw new LobbyError("You're not guessing the card");
+    }
+    this.finishSpybandsRound(lobby, game, correct ? "spyGuessed" : "spyMissed");
   }
 
   playAgain(lobby: Lobby, playerId: string): void {
@@ -361,7 +404,7 @@ export class LobbyManager {
   removePlayer(lobby: Lobby, playerId: string): boolean {
     lobby.players.delete(playerId);
     if (lobby.players.size === 0) {
-      if (lobby.game?.mode === "spybands") this.cancelLockIn(lobby.game);
+      if (lobby.game?.mode === "spybands") this.cancelTimers(lobby.game);
       this.lobbies.delete(lobby.code);
       return true;
     }
@@ -404,7 +447,7 @@ export class LobbyManager {
         categoryName: game.categoryName,
         stage: game.stage,
         isSpy,
-        card: isSpy ? null : game.card,
+        card: isSpy && !game.guess ? null : game.card,
         majority: majorityOf(game.players.size),
         players: [...game.players.entries()].map(
           ([id, sp]): SpybandsPlayerViewDTO => ({
@@ -419,6 +462,7 @@ export class LobbyManager {
         lockIn: game.lockIn
           ? { targetId: game.lockIn.targetId, remainingMs: Math.max(0, game.lockIn.endsAt - Date.now()) }
           : null,
+        guess: game.guess ? { remainingMs: Math.max(0, game.guess.endsAt - Date.now()) } : null,
       };
     }
     return {
@@ -667,6 +711,12 @@ export class LobbyManager {
     game.lockIn = null;
   }
 
+  private cancelTimers(game: SpybandsGame): void {
+    this.cancelLockIn(game);
+    if (game.guess) clearTimeout(game.guess.timer);
+    game.guess = null;
+  }
+
   private tallyAccusations(game: SpybandsGame): Map<string, number> {
     const votes = new Map<string, number>();
     for (const p of game.players.values()) {
@@ -681,13 +731,14 @@ export class LobbyManager {
     outcome: SpybandsOutcome,
     accusedId: string | null = null,
   ): void {
-    this.cancelLockIn(game);
+    this.cancelTimers(game);
     const pointsAwarded = new Map<string, number>();
     for (const id of game.players.keys()) {
       const isSpy = id === game.spyId;
       let points = 0;
-      if (outcome === "caught" && !isSpy) points = SPYBANDS_RULES.pointsForCatchingSpy;
+      if ((outcome === "caught" || outcome === "spyMissed") && !isSpy) points = SPYBANDS_RULES.pointsForCatchingSpy;
       if (outcome === "escaped" && isSpy) points = SPYBANDS_RULES.pointsForSpyEscaping;
+      if (outcome === "spyGuessed" && isSpy) points = SPYBANDS_RULES.pointsForSpyGuessing;
       pointsAwarded.set(id, points);
       const player = lobby.players.get(id);
       if (player) player.score += points;
@@ -718,7 +769,7 @@ export class LobbyManager {
     // The majority just shrank, so a pending swap, ready check, or accusation may now pass.
     if (game.stage === "choosing") {
       this.settleChoosingStage(game);
-    } else {
+    } else if (!game.guess) {
       this.settleLockIn(lobby, game);
     }
   }

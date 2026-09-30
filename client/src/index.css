@@ -1155,11 +1155,13 @@ input {
   background: var(--color-bg-elevated);
 }
 
-.outcome-caught {
+.outcome-caught,
+.outcome-spyMissed {
   background: var(--color-success-muted);
 }
 
-.outcome-escaped {
+.outcome-escaped,
+.outcome-spyGuessed {
   background: var(--color-danger-muted);
 }
 

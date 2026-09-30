@@ -20,6 +20,8 @@ export type ClientMessage =
   | { type: "spyVoteSwap"; vote: boolean }
   | { type: "spyReady"; ready: boolean }
   | { type: "spyAccuse"; targetId: string | null }
+  | { type: "spyStartGuess" }
+  | { type: "spyFinishGuess"; correct: boolean }
   | { type: "playAgain" };
 
 export type ServerMessage =

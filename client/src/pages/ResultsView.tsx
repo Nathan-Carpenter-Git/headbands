@@ -1,5 +1,6 @@
 import {
   GAME_MODES,
+  SPYBANDS_RULES,
   type HeadbandsRoundResultsDTO,
   type LobbyStateDTO,
   type RoundResultsDTO,
@@ -105,6 +106,8 @@ function outcomeHeadline(results: SpybandsRoundResultsDTO): string {
   const headlines: Record<SpybandsOutcome, string> = {
     caught: `${results.spyName} was the spy, and got caught`,
     escaped: `${results.spyName} was the spy, and got away`,
+    spyGuessed: `${results.spyName} was the spy, and guessed the card`,
+    spyMissed: `${results.spyName} was the spy, and guessed wrong`,
     spyLeft: `${results.spyName} was the spy, but left the game`,
     tooFewPlayers: "Too many players left to finish the round",
   };
@@ -116,7 +119,11 @@ function outcomeDetail(results: SpybandsRoundResultsDTO): string {
     case "caught":
       return "Everyone who wasn't the spy gets a point.";
     case "escaped":
-      return `The vote landed on ${results.accusedName}, so the spy gets 2 points.`;
+      return `The vote landed on ${results.accusedName}, so the spy gets ${SPYBANDS_RULES.pointsForSpyEscaping} points.`;
+    case "spyGuessed":
+      return `The spy gets ${SPYBANDS_RULES.pointsForSpyGuessing} points.`;
+    case "spyMissed":
+      return "Everyone who wasn't the spy gets a point.";
     case "spyLeft":
     case "tooFewPlayers":
       return "The round was called off, so nobody scores.";

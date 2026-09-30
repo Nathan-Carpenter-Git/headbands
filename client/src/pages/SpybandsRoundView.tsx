@@ -253,7 +253,7 @@ function GuessButton({ locking }: { locking: boolean }) {
           Cancel
         </button>
         <button type="button" className="btn btn-primary" onClick={spyStartGuess}>
-          Show the card
+          Guess the card
         </button>
       </div>
     </div>

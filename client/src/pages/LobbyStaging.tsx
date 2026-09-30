@@ -5,6 +5,7 @@ import { useLobby } from "../state/useLobby";
 import { useLocalCategories } from "../state/useLocalCategories";
 import { Avatar } from "../components/Avatar";
 import { CategoryPicker, type PickerOption } from "../components/CategoryPicker";
+import { copyText } from "../lib/clipboard";
 
 export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
   const { myPlayerId, categories, lobbyCustomCategories, updateSettings, uploadCategory, startRound } = useLobby();
@@ -53,8 +54,8 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
         <button
           type="button"
           className="btn btn-sm"
-          onClick={() => {
-            navigator.clipboard.writeText(inviteLink);
+          onClick={async () => {
+            if (!(await copyText(inviteLink))) return;
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}

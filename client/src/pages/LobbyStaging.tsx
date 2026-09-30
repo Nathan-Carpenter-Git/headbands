@@ -102,6 +102,7 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
                 aria-pressed={lobby.settings.gameMode === id}
                 onClick={() => updateSettings({ gameMode: id })}
               >
+                {GAME_MODES[id].isNew && <span className="badge badge-warning mode-option-new">New gamemode!</span>}
                 <span className="mode-option-label">{GAME_MODES[id].label}</span>
                 <span className="mode-option-summary">{GAME_MODES[id].summary}</span>
               </button>

@@ -1006,6 +1006,10 @@ input {
   box-shadow: 3px 3px 0 var(--color-accent);
 }
 
+.mode-option-new {
+  align-self: flex-start;
+}
+
 .mode-option-label {
   font-size: 16px;
   font-weight: 800;

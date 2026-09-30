@@ -5,6 +5,8 @@ export interface GameModeInfo {
   /** One line shown under the mode picker in the lobby. */
   summary: string;
   minPlayers: number;
+  /** Flags the mode as new in the lobby's mode picker. */
+  isNew?: boolean;
 }
 
 export const GAME_MODES: Record<GameMode, GameModeInfo> = {
@@ -17,6 +19,7 @@ export const GAME_MODES: Record<GameMode, GameModeInfo> = {
     label: "Spybands",
     summary: "Everyone shares one card except the spy. Talk it out, then vote to catch them.",
     minPlayers: 3,
+    isNew: true,
   },
 };
 

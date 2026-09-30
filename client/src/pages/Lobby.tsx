@@ -4,6 +4,7 @@ import { GAME_LIMITS } from "@headbands/shared";
 import { useLobby } from "../state/useLobby";
 import { LobbyStaging } from "./LobbyStaging";
 import { RoundView } from "./RoundView";
+import { SpybandsRoundView } from "./SpybandsRoundView";
 import { ResultsView } from "./ResultsView";
 
 export function Lobby() {
@@ -52,7 +53,8 @@ export function Lobby() {
   }
 
   if (lobby.phase === "round") {
-    return round ? <RoundView round={round} /> : <div className="page">Dealing cards…</div>;
+    if (!round) return <div className="page">Dealing cards…</div>;
+    return round.mode === "spybands" ? <SpybandsRoundView round={round} /> : <RoundView round={round} />;
   }
   if (lobby.phase === "results") {
     return <ResultsView lobby={lobby} results={roundResults} />;

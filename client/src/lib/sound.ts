@@ -96,3 +96,8 @@ export function playGameOver(): void {
     tone(783.99, 0.24, 0.22, 0.05);
   });
 }
+
+/** Each second of a Spybands lock-in countdown: a short, dry tick that rises as it nears zero. */
+export function playCountdownTick(secondsLeft: number): void {
+  play(() => tone(secondsLeft <= 1 ? 880 : 587.33, 0, 0.06, 0.03, "triangle"));
+}

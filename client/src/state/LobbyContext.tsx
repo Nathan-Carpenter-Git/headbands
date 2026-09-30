@@ -35,6 +35,12 @@ function healthUrl(): string {
   return url.toString();
 }
 
+/** Whether the given player has revealed their own card in a Headbands round (always false in other modes). */
+function myHeadbandsReveal(round: RoundStateDTO | null, playerId: string | null): boolean {
+  if (round?.mode !== "headbands") return false;
+  return round.players.find((p) => p.id === playerId)?.revealed ?? false;
+}
+
 export function LobbyProvider({ children }: { children: ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null);
   // Tracked outside React state purely to detect transitions (someone joined, a round just
@@ -112,11 +118,10 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
             return;
           case "resumed": {
             awaitingResumeRef.current = false;
-            const mine = message.round?.players.find((p) => p.id === message.playerId);
             myPlayerIdRef.current = message.playerId;
             prevPhaseRef.current = message.lobby.phase;
             prevPlayerCountRef.current = message.lobby.players.length;
-            myPrevRevealedRef.current = mine?.revealed ?? false;
+            myPrevRevealedRef.current = myHeadbandsReveal(message.round, message.playerId);
             setMyPlayerId(message.playerId);
             setLobby(message.lobby);
             setRound(message.round);
@@ -152,11 +157,11 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
             setLobbyCustomCategories(message.categories);
             return;
           case "roundState": {
-            const mine = message.round.players.find((p) => p.id === myPlayerIdRef.current);
-            if (mine?.revealed && !myPrevRevealedRef.current) {
+            const revealed = myHeadbandsReveal(message.round, myPlayerIdRef.current);
+            if (revealed && !myPrevRevealedRef.current) {
               playReveal();
             }
-            myPrevRevealedRef.current = mine?.revealed ?? false;
+            myPrevRevealedRef.current = revealed;
             setRound(message.round);
             return;
           }
@@ -229,6 +234,11 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
   const startRound = useCallback(() => send({ type: "startRound" }), [send]);
   const swapCard = useCallback(() => send({ type: "swapCard" }), [send]);
   const revealCard = useCallback(() => send({ type: "revealCard" }), [send]);
+  const spyVoteSwap = useCallback((vote: boolean) => send({ type: "spyVoteSwap", vote }), [send]);
+  const spyReady = useCallback((ready: boolean) => send({ type: "spyReady", ready }), [send]);
+  const spyAccuse = useCallback((targetId: string | null) => send({ type: "spyAccuse", targetId }), [send]);
+  const spyStartGuess = useCallback(() => send({ type: "spyStartGuess" }), [send]);
+  const spyFinishGuess = useCallback((correct: boolean) => send({ type: "spyFinishGuess", correct }), [send]);
   const playAgain = useCallback(() => send({ type: "playAgain" }), [send]);
   const dismissError = useCallback(() => setErrorMessage(null), []);
 
@@ -252,6 +262,11 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
         startRound,
         swapCard,
         revealCard,
+        spyVoteSwap,
+        spyReady,
+        spyAccuse,
+        spyStartGuess,
+        spyFinishGuess,
         playAgain,
       }}
     >

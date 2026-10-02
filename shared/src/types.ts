@@ -127,6 +127,11 @@ export interface SpybandsRoundStateDTO {
   isSpy: boolean;
   /** The shared card, or null when the viewer is the spy and isn't guessing it yet. */
   card: string | null;
+  /**
+   * The spy's shortlist: the card plus up to 19 others from the category, shuffled, so the spy
+   * knows it's one of these. Null for everyone else.
+   */
+  candidates: string[] | null;
   /** Votes needed to swap the card, and to lock in an accusation: more than half the players. */
   majority: number;
   players: SpybandsPlayerViewDTO[];

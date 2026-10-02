@@ -20,6 +20,7 @@ export function SpybandsRoundView({ round }: { round: SpybandsRoundStateDTO }) {
       </div>
 
       <SecretCard round={round} />
+      {round.candidates && round.card === null && <CandidateList candidates={round.candidates} />}
 
       {round.stage === "choosing" ? <ChoosingStage round={round} me={me} /> : <VotingStage round={round} />}
     </div>
@@ -63,7 +64,10 @@ function SecretCard({ round }: { round: SpybandsRoundStateDTO }) {
       <div className="secret-card is-spy">
         <span className="secret-card-label">Your role</span>
         <span className="secret-card-value">Spy</span>
-        <span className="secret-card-hint">Work out the card from what everyone says, without getting caught.</span>
+        <span className="secret-card-hint">
+          The card is one of the {round.candidates?.length ?? 0} below. Work out which from what everyone says, without
+          getting caught.
+        </span>
       </div>
     );
   }
@@ -72,6 +76,24 @@ function SecretCard({ round }: { round: SpybandsRoundStateDTO }) {
       <span className="secret-card-label">The card</span>
       <span className="secret-card-value">{round.card}</span>
       <span className="secret-card-hint">One player can't see this. Keep it vague enough that they can't guess it.</span>
+    </div>
+  );
+}
+
+function CandidateList({ candidates }: { candidates: string[] }) {
+  return (
+    <div className="card">
+      <div className="row-between">
+        <h2>It's one of these</h2>
+        <span className="tally">{candidates.length} cards</span>
+      </div>
+      <ul className="candidate-list">
+        {candidates.map((c) => (
+          <li key={c} className="candidate">
+            {c}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

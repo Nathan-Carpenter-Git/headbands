@@ -430,3 +430,32 @@ test("only the spy can guess, only while voting, and not once a vote is locking 
   assert.equal(lastError(spy), "Too late, the vote is locking in");
   assert.equal(round(spy).card, null);
 });
+
+test("the spy sees the card hidden among 20 possible cards, and nobody else gets the list", async () => {
+  const clients = await spybandsLobby(3);
+  const { spy, others } = await startRound(clients);
+  const card = round(others[0]).card!;
+
+  const candidates = round(spy).candidates!;
+  assert.equal(candidates.length, SPYBANDS_RULES.spyCandidates);
+  assert.equal(new Set(candidates).size, candidates.length);
+  assert.ok(candidates.includes(card));
+  for (const c of others) assert.equal(round(c).candidates, null);
+
+  // A swap changes the card, so the list is rebuilt around the new one.
+  for (const c of clients) send(c, { type: "spyVoteSwap", vote: true });
+  await wait(50);
+  const newCard = round(others[0]).card!;
+  assert.notEqual(newCard, card);
+  assert.ok(round(spy).candidates!.includes(newCard));
+});
+
+test("a category smaller than the spy's list shows the spy every card in it", async () => {
+  const clients = await spybandsLobby(3);
+  const cards = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"];
+  send(clients[0], { type: "uploadCategory", category: { id: "custom-small", name: "Small", cards } });
+  send(clients[0], { type: "updateSettings", settings: { categoryIds: ["custom-small"] } });
+  await wait(30);
+  const { spy } = await startRound(clients);
+  assert.deepEqual([...round(spy).candidates!].sort(), [...cards].sort());
+});

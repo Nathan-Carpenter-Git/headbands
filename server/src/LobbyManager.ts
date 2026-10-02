@@ -76,6 +76,8 @@ interface SpybandsGame {
   categoryCards: string[];
   /** Cards not yet shown this round, drawn from when a swap vote passes. */
   swapPile: string[];
+  /** What the spy sees: the card hidden among others, rebuilt whenever the card changes. */
+  candidates: string[];
   spyId: string;
   /** Kept separately so the results can still name the spy if they leave mid-round. */
   spyName: string;
@@ -286,6 +288,7 @@ export class LobbyManager {
       card,
       categoryCards: category.cards,
       swapPile: rest,
+      candidates: spyCandidates(card, category.cards),
       spyId,
       spyName: lobby.players.get(spyId)!.name,
       players: new Map(playerIds.map((id) => [id, { votedSwap: false, ready: false, accusing: null }])),
@@ -448,6 +451,7 @@ export class LobbyManager {
         stage: game.stage,
         isSpy,
         card: isSpy && !game.guess ? null : game.card,
+        candidates: isSpy ? game.candidates : null,
         majority: majorityOf(game.players.size),
         players: [...game.players.entries()].map(
           ([id, sp]): SpybandsPlayerViewDTO => ({
@@ -674,6 +678,7 @@ export class LobbyManager {
         game.swapPile = shuffle(game.categoryCards.filter((c) => c !== game.card));
       }
       game.card = game.swapPile.pop()!;
+      game.candidates = spyCandidates(game.card, game.categoryCards);
       // A new card needs everyone to look at it and agree again.
       for (const p of players) {
         p.votedSwap = false;
@@ -811,4 +816,10 @@ export class LobbyManager {
       throw new LobbyError("Only the party leader can do that");
     }
   }
+}
+
+/** The card plus as many other cards from the category as fit in the spy's shortlist, shuffled. */
+function spyCandidates(card: string, categoryCards: string[]): string[] {
+  const others = shuffle([...new Set(categoryCards)].filter((c) => c !== card));
+  return shuffle([card, ...others.slice(0, SPYBANDS_RULES.spyCandidates - 1)]);
 }

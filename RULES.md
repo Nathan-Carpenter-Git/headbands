@@ -77,7 +77,8 @@ The leader picks Spybands as the game mode, chooses categories and how many roun
 ### Agreeing on the card
 
 1. A random card is drawn from the category, and everyone except the spy can see it.
-   The spy only sees that they are the spy.
+   The spy only sees that they are the spy, plus a shuffled list of 20 cards from the category with the real one hidden among them.
+   If the category has fewer than 20 cards, the spy sees all of them.
 2. Anyone can vote to swap the card for a new one.
    Once more than half of the players vote to swap, a new card is drawn and everyone has to look again.
 3. When you're happy with the card, press Ready.

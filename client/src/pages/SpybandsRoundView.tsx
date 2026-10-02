@@ -20,7 +20,9 @@ export function SpybandsRoundView({ round }: { round: SpybandsRoundStateDTO }) {
       </div>
 
       <SecretCard round={round} />
-      {round.candidates && round.card === null && <CandidateList candidates={round.candidates} />}
+      {round.candidates && round.card === null && (
+        <CandidateList candidates={round.candidates} roundNumber={round.roundNumber} />
+      )}
 
       {round.stage === "choosing" ? <ChoosingStage round={round} me={me} /> : <VotingStage round={round} />}
     </div>
@@ -80,22 +82,70 @@ function SecretCard({ round }: { round: SpybandsRoundStateDTO }) {
   );
 }
 
-function CandidateList({ candidates }: { candidates: string[] }) {
+/**
+ * The spy's shortlist. Tapping a card crosses it out, and tapping again brings it back. Crosses are
+ * kept in local storage for this round's list, so a reload doesn't lose them, and start fresh when
+ * a swap changes the list.
+ */
+function CandidateList({ candidates, roundNumber }: { candidates: string[]; roundNumber: number }) {
+  const { lobby } = useLobby();
+  const storageKey = `headbands:crossed:${lobby?.code}:${roundNumber}`;
+  const listId = [...candidates].sort().join("\n");
+  const [crossed, setCrossed] = useState(() => loadCrossed(storageKey, listId));
+  const [syncedList, setSyncedList] = useState(listId);
+  if (listId !== syncedList) {
+    setSyncedList(listId);
+    setCrossed(loadCrossed(storageKey, listId));
+  }
+
+  function toggle(card: string) {
+    const next = new Set(crossed);
+    if (next.has(card)) next.delete(card);
+    else next.add(card);
+    setCrossed(next);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ listId, crossed: [...next] }));
+    } catch {
+      // Storage can be unavailable (private mode); the crosses just won't survive a reload.
+    }
+  }
+
   return (
     <div className="card">
       <div className="row-between">
         <h2>It's one of these</h2>
-        <span className="tally">{candidates.length} cards</span>
+        <span className="tally">
+          {candidates.length - crossed.size} of {candidates.length} left
+        </span>
       </div>
       <ul className="candidate-list">
         {candidates.map((c) => (
-          <li key={c} className="candidate">
-            {c}
+          <li key={c}>
+            <button
+              type="button"
+              className="candidate"
+              aria-pressed={crossed.has(c)}
+              aria-label={crossed.has(c) ? `${c}, crossed out` : c}
+              onClick={() => toggle(c)}
+            >
+              {c}
+            </button>
           </li>
         ))}
       </ul>
+      <p className="empty-hint">Tap a card to cross it out. Tap it again to bring it back.</p>
     </div>
   );
+}
+
+function loadCrossed(storageKey: string, listId: string): Set<string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null");
+    if (saved?.listId === listId && Array.isArray(saved.crossed)) return new Set(saved.crossed);
+  } catch {
+    // Missing or unreadable: start with nothing crossed out.
+  }
+  return new Set();
 }
 
 function ChoosingStage({ round, me }: { round: SpybandsRoundStateDTO; me: SpybandsPlayerViewDTO | undefined }) {

@@ -323,13 +323,25 @@ export class LobbyManager {
     this.maybeCompleteRound(lobby, game);
   }
 
+  /**
+   * Picks a fresh spy after a card swap, never the previous one, so nobody carries the spy role
+   * across a card change and reads into who kept quiet. Caller resets votes and readiness.
+   */
+  private rerollSpy(lobby: Lobby, game: SpybandsGame): void {
+    const others = [...game.players.keys()].filter((id) => id !== game.spyId);
+    // With a single player left nothing can change; leave everything as is.
+    if (others.length === 0) return;
+    game.spyId = others[Math.floor(Math.random() * others.length)];
+    game.spyName = lobby.players.get(game.spyId)?.name ?? "?";
+  }
+
   /** Spybands "choosing" stage: vote for (or withdraw a vote for) a different shared card. */
   spyVoteSwap(lobby: Lobby, playerId: string, vote: boolean): void {
     const { game, sp } = this.requireSpyPlayer(lobby, playerId, "choosing");
     sp.votedSwap = vote;
     // Wanting a new card and being ready to play with this one are opposites.
     if (vote) sp.ready = false;
-    this.settleChoosingStage(game);
+    this.settleChoosingStage(lobby, game);
   }
 
   /** Spybands "choosing" stage: accept the current card, or take that back. */
@@ -337,7 +349,7 @@ export class LobbyManager {
     const { game, sp } = this.requireSpyPlayer(lobby, playerId, "choosing");
     sp.ready = ready;
     if (ready) sp.votedSwap = false;
-    this.settleChoosingStage(game);
+    this.settleChoosingStage(lobby, game);
   }
 
   /** Spybands "voting" stage: accuse someone of being the spy, or withdraw the accusation. */
@@ -425,6 +437,29 @@ export class LobbyManager {
       this.removeSpyPlayer(lobby, lobby.game, playerId);
     }
     return false;
+  }
+
+  /**
+   * Removes a player at the leader's request (someone left without a word, or is AFK). Works on
+   * disconnected players too, so the leader isn't stuck waiting out the reconnect grace period.
+   * Returns the removed player, so the caller can tell them why they lost their seat.
+   */
+  kickPlayer(lobby: Lobby, playerId: string, targetId: string): Player {
+    this.requireLeader(lobby, playerId);
+    if (targetId === playerId) {
+      throw new LobbyError("You can't kick yourself; use Leave");
+    }
+    const target = lobby.players.get(targetId);
+    if (!target) {
+      throw new LobbyError("That player is not in this lobby");
+    }
+    if (target.ws && target.ws.readyState === target.ws.OPEN) {
+      this.sendTo(target, { type: "kicked", reason: "The party leader removed you from the lobby" });
+      // Detach the socket from this lobby so its close doesn't run a second removal.
+      target.ws.close();
+    }
+    this.removePlayer(lobby, targetId);
+    return target;
   }
 
   toDTO(lobby: Lobby): LobbyStateDTO {
@@ -670,7 +705,7 @@ export class LobbyManager {
   }
 
   /** Swaps the card once a majority wants a new one, and starts the vote once everyone's ready. */
-  private settleChoosingStage(game: SpybandsGame): void {
+  private settleChoosingStage(lobby: Lobby, game: SpybandsGame): void {
     const players = [...game.players.values()];
     const majority = majorityOf(game.players.size);
     if (players.filter((p) => p.votedSwap).length >= majority) {
@@ -679,6 +714,7 @@ export class LobbyManager {
       }
       game.card = game.swapPile.pop()!;
       game.candidates = spyCandidates(game.card, game.categoryCards);
+      this.rerollSpy(lobby, game);
       // A new card needs everyone to look at it and agree again.
       for (const p of players) {
         p.votedSwap = false;
@@ -773,7 +809,7 @@ export class LobbyManager {
     }
     // The majority just shrank, so a pending swap, ready check, or accusation may now pass.
     if (game.stage === "choosing") {
-      this.settleChoosingStage(game);
+      this.settleChoosingStage(lobby, game);
     } else if (!game.guess) {
       this.settleLockIn(lobby, game);
     }

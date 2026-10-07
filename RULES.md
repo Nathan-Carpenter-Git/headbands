@@ -21,6 +21,7 @@ Figure out what your own card says before everyone else figures out theirs.
 1. One player creates a lobby and becomes the party leader.
 2. The leader shares the invite link, and everyone else joins with it.
 3. The leader picks one or more categories, how many rounds to play, and a couple of options.
+   Everyone else can see these settings in the lobby, but only the leader can change them.
 4. The leader starts the game.
 
 ### Playing a round
@@ -80,7 +81,8 @@ The leader picks Spybands as the game mode, chooses categories and how many roun
    The spy only sees that they are the spy, plus a shuffled list of 20 cards from the category with the real one hidden among them.
    If the category has fewer than 20 cards, the spy sees all of them.
 2. Anyone can vote to swap the card for a new one.
-   Once more than half of the players vote to swap, a new card is drawn and everyone has to look again.
+   Once more than half of the players vote to swap, a new card is drawn, a new spy is chosen at random, and everyone has to look again.
+   The new spy is always someone who wasn't the spy before, so nobody carries the role across a card change.
 3. When you're happy with the card, press Ready.
    The round starts once every player is ready.
 
@@ -93,7 +95,7 @@ The spy takes part in all of this too, so they can blend in by voting and readyi
    Answer in a way that proves you know the card, without making it so obvious that the spy can work it out.
 2. At any point, vote for the player you think is the spy.
    You can change or take back your vote whenever you like.
-3. Once more than half of all players vote for the same person, a five second countdown starts.
+3. Once more than half of all players vote for the same person, a ten second countdown starts.
    If enough people change their vote to break that majority, the countdown stops.
 4. When the countdown reaches zero, the vote is locked in.
    Everyone's role is revealed, and the spy finally sees the card.
@@ -127,3 +129,4 @@ If the spy leaves the game for good during a round, or so many players leave tha
 
 - You can build your own categories from the category library and share them with friends as files.
 - If your phone locks or your connection drops, come back within two minutes and you'll pick up right where you left off.
+- If someone leaves for good, the leader can remove them from the lobby with the Kick button, so the game isn't held up waiting for them.

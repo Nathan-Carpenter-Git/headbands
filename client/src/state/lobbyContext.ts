@@ -23,6 +23,8 @@ export interface LobbyContextValue {
   joinLobby: (code: string, playerName: string) => void;
   leaveLobby: () => void;
   updateSettings: (settings: Partial<LobbySettingsDTO>) => void;
+  /** Leader only: remove another player from the lobby. */
+  kickPlayer: (targetId: string) => void;
   uploadCategory: (category: CategoryUploadDTO) => void;
   startRound: () => void;
   swapCard: () => void;

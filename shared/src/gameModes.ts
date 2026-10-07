@@ -25,7 +25,7 @@ export const GAME_MODES: Record<GameMode, GameModeInfo> = {
 
 export const SPYBANDS_RULES = {
   /** How long a majority accusation has to hold before it locks in. */
-  lockInMs: 5_000,
+  lockInMs: 10_000,
   /** How many possible cards the spy sees, the real one among them, when the category has enough. */
   spyCandidates: 20,
   /** How long the spy has, once shown the card, to claim their guess was right. */

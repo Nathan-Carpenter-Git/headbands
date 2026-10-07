@@ -95,7 +95,7 @@ The spy takes part in all of this too, so they can blend in by voting and readyi
    Answer in a way that proves you know the card, without making it so obvious that the spy can work it out.
 2. At any point, vote for the player you think is the spy.
    You can change or take back your vote whenever you like.
-3. Once more than half of all players vote for the same person, a five second countdown starts.
+3. Once more than half of all players vote for the same person, a ten second countdown starts.
    If enough people change their vote to break that majority, the countdown stops.
 4. When the countdown reaches zero, the vote is locked in.
    Everyone's role is revealed, and the spy finally sees the card.

@@ -13,6 +13,7 @@ export type ClientMessage =
   | { type: "resumeSession"; code: string; playerId: string; token: string }
   | { type: "leaveLobby" }
   | { type: "updateSettings"; settings: Partial<LobbySettingsDTO> }
+  | { type: "kickPlayer"; targetId: string }
   | { type: "uploadCategory"; category: CategoryUploadDTO }
   | { type: "startRound" }
   | { type: "swapCard" }
@@ -34,6 +35,7 @@ export type ServerMessage =
       results: RoundResultsDTO | null;
     }
   | { type: "lobbyState"; lobby: LobbyStateDTO }
+  | { type: "kicked"; reason: string }
   | { type: "categories"; categories: CategorySummaryDTO[] }
   | { type: "customCategories"; categories: CategorySummaryDTO[] }
   | { type: "roundState"; round: RoundStateDTO }

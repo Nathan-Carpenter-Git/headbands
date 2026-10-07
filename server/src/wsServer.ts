@@ -205,6 +205,22 @@ function handleMessage(
       lobbyManager.broadcastGameState(lobby);
       return;
     }
+    case "kickPlayer": {
+      const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
+      lobbyManager.kickPlayer(lobby, meta.playerId, message.targetId);
+      // If they were mid grace period, a scheduled removal is now pointless: cancel it.
+      const key = pendingKey(lobby.code, message.targetId);
+      const timer = pendingRemovals.get(key);
+      if (timer) {
+        clearTimeout(timer);
+        pendingRemovals.delete(key);
+      }
+      const stillThere = lobbyManager.getLobby(lobby.code);
+      if (stillThere) {
+        lobbyManager.broadcastGameState(stillThere);
+      }
+      return;
+    }
     case "startRound": {
       const { lobby, meta } = requireLobby(connections, lobbyManager, ws);
       lobbyManager.startRound(lobby, meta.playerId);

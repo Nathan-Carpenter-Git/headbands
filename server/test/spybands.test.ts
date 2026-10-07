@@ -128,9 +128,9 @@ test("exactly one spy, who can't see the shared card that everyone else sees", a
   assert.equal(round(spy).majority, 3);
 });
 
-test("a card swap needs more than half the players, and resets everyone's readiness", async () => {
+test("a card swap needs more than half the players, resets readiness, and picks a different spy", async () => {
   const clients = await spybandsLobby(4);
-  const { others } = await startRound(clients);
+  const { spy, others } = await startRound(clients);
   const firstCard = round(others[0]).card;
 
   send(clients[3], { type: "spyReady", ready: true });
@@ -143,13 +143,23 @@ test("a card swap needs more than half the players, and resets everyone's readin
 
   send(clients[2], { type: "spyVoteSwap", vote: true });
   await wait(50);
-  const secondCard = round(others[0]).card;
+  const newSpy = clients.find((c) => round(c).isSpy)!;
+  const secondCard = round(newSpy === others[0] ? clients.find((c) => c !== newSpy && !round(c).isSpy)! : others[0]).card;
   assert.notEqual(secondCard, firstCard);
   for (const p of round(clients[0]).players) {
     assert.equal(p.votedSwap, false);
     assert.equal(p.ready, false);
   }
-  for (const c of others) assert.equal(round(c).card, secondCard);
+  // The spy was re-rolled: it's still exactly one spy, and it isn't the old spy.
+  assert.notEqual(newSpy, spy, "a swap must never keep the same spy");
+  assert.equal(clients.filter((c) => round(c).isSpy).length, 1);
+  // Every non-spy sees the new card; the new spy doesn't.
+  for (const c of clients) {
+    if (c === newSpy) assert.equal(round(c).card, null);
+    else assert.equal(round(c).card, secondCard);
+  }
+  // The old spy is back among the informed players.
+  assert.ok(round(spy).card, "the old spy sees the new card");
 });
 
 test("voting to swap takes back a ready, and readying takes back a swap vote", async () => {
@@ -298,8 +308,13 @@ test("an innocent player leaving shrinks the majority, which can finish a pendin
   await wait(GRACE_MS + 80);
   assert.equal(phase(a), "round");
   assert.equal(round(a).majority, 2);
-  assert.notEqual(round(a).card, firstCard);
-  assert.equal(round(b).card, round(a).card);
+  // The swap went through, which also re-rolled the spy: a and b see the new card
+  // unless one of them became the spy.
+  const newSpy = clients.find((c) => round(c).isSpy)!;
+  assert.notEqual(newSpy, spy);
+  for (const c of [a, b]) {
+    if (c !== newSpy) assert.notEqual(round(c).card, firstCard);
+  }
 });
 
 test("the round is called off if it drops below 3 players", async () => {
@@ -442,12 +457,15 @@ test("the spy sees the card hidden among 20 possible cards, and nobody else gets
   assert.ok(candidates.includes(card));
   for (const c of others) assert.equal(round(c).candidates, null);
 
-  // A swap changes the card, so the list is rebuilt around the new one.
+  // A swap changes the card and re-rolls the spy, so the list is rebuilt around the new one.
   for (const c of clients) send(c, { type: "spyVoteSwap", vote: true });
   await wait(50);
-  const newCard = round(others[0]).card!;
+  const newSpy = clients.find((c) => round(c).isSpy)!;
+  assert.notEqual(newSpy, spy, "the spy must change on a swap");
+  const informed = clients.find((c) => c !== newSpy)!;
+  const newCard = round(informed).card!;
   assert.notEqual(newCard, card);
-  assert.ok(round(spy).candidates!.includes(newCard));
+  assert.ok(round(newSpy).candidates!.includes(newCard));
 });
 
 test("a category smaller than the spy's list shows the spy every card in it", async () => {
@@ -458,4 +476,89 @@ test("a category smaller than the spy's list shows the spy every card in it", as
   await wait(30);
   const { spy } = await startRound(clients);
   assert.deepEqual([...round(spy).candidates!].sort(), [...cards].sort());
+});
+
+test("the leader can kick a player, who is told why and lands outside the lobby", async () => {
+  const clients = await spybandsLobby(4);
+  const [leader, victim] = clients;
+
+  send(leader, { type: "kickPlayer", targetId: victim.playerId });
+  await wait(50);
+
+  // The victim gets an explicit "kicked" notice, not a generic error.
+  const kickNotice = victim.messages.findLast((m) => m.type === "kicked");
+  assert.ok(kickNotice && kickNotice.type === "kicked" && kickNotice.reason.length > 0);
+  // Everyone else sees a 3 player lobby without the victim.
+  const players = latest(leader, "lobbyState").lobby.players;
+  assert.equal(players.length, 3);
+  assert.ok(!players.some((p) => p.id === victim.playerId));
+});
+
+test("kicking a disconnected player skips the reconnect grace period", async () => {
+  const clients = await spybandsLobby(4);
+  const [leader, gone] = clients;
+  gone.ws.close();
+  await wait(30);
+  // Within the grace period they still show as reconnecting.
+  assert.ok(latest(leader, "lobbyState").lobby.players.some((p) => p.id === gone.playerId && !p.connected));
+
+  send(leader, { type: "kickPlayer", targetId: gone.playerId });
+  await wait(50);
+  assert.ok(!latest(leader, "lobbyState").lobby.players.some((p) => p.id === gone.playerId));
+  // And they're gone for good: waiting past the grace period changes nothing.
+  await wait(GRACE_MS + 60);
+  assert.ok(!latest(leader, "lobbyState").lobby.players.some((p) => p.id === gone.playerId));
+});
+
+test("only the leader can kick, and never themselves or a stranger", async () => {
+  const clients = await spybandsLobby(3);
+  const [leader, p2, p3] = clients;
+
+  send(p2, { type: "kickPlayer", targetId: p3.playerId });
+  await wait(30);
+  assert.equal(latest(p2, "error").message, "Only the party leader can do that");
+
+  send(leader, { type: "kickPlayer", targetId: leader.playerId });
+  await wait(30);
+  assert.equal(latest(leader, "error").message, "You can't kick yourself; use Leave");
+
+  send(leader, { type: "kickPlayer", targetId: "no-such-player" });
+  await wait(30);
+  assert.equal(latest(leader, "error").message, "That player is not in this lobby");
+  assert.equal(latest(leader, "lobbyState").lobby.players.length, 3);
+});
+
+test("kicking a spybands player mid round follows the normal parting rules", async () => {
+  // The leader can't be kicked, so retry fresh lobbies until the spy isn't the leader.
+  let clients!: Awaited<ReturnType<typeof spybandsLobby>>;
+  let spy: Client | undefined;
+  for (let attempt = 0; attempt < 20 && !spy; attempt++) {
+    clients = await spybandsLobby(4);
+    ({ spy } = await startRound(clients));
+    if (spy === clients[0]) spy = undefined;
+  }
+  assert.ok(spy && spy !== clients[0], "the spy should not be the leader within 20 lobbies");
+  const [leader] = clients;
+  const others = clients.filter((c) => c !== spy);
+
+  // Kick the spy: the round is called off with no points, like a spy leaving for good.
+  send(leader, { type: "kickPlayer", targetId: spy.playerId });
+  await wait(50);
+  assert.equal(phase(others[0]), "results");
+  assert.equal(results(others[0]).outcome, "spyLeft");
+  for (const c of others) {
+    assert.equal(results(c).players.find((p) => p.playerId === c.playerId)!.pointsAwarded, 0);
+  }
+
+  // Kicking an innocent keeps the round alive with 3 players: the game goes on.
+  const second = await spybandsLobby(4);
+  await startRound(second);
+  await everyoneReady(second);
+  // Pick a victim who is guaranteed not to be the spy, so the round must continue.
+  const victim = second.find((c) => c !== second[0] && !round(c).isSpy)!;
+  send(second[0], { type: "kickPlayer", targetId: victim.playerId });
+  await wait(50);
+  assert.equal(phase(second[0]), "round");
+  assert.equal(round(second[0]).majority, 2);
+  assert.equal(round(second[0]).players.length, 3);
 });

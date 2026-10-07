@@ -153,6 +153,14 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
           case "categories":
             setCategories(message.categories);
             return;
+          case "kicked":
+            // The leader removed us. Not an error on our part, so land on the join screen with
+            // a notice instead of a banner over a lobby we're no longer part of.
+            awaitingResumeRef.current = false;
+            clearSession();
+            resetLocalState();
+            setErrorMessage(message.reason);
+            return;
           case "customCategories":
             setLobbyCustomCategories(message.categories);
             return;
@@ -227,6 +235,7 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
     (settings: Partial<LobbySettingsDTO>) => send({ type: "updateSettings", settings }),
     [send],
   );
+  const kickPlayer = useCallback((targetId: string) => send({ type: "kickPlayer", targetId }), [send]);
   const uploadCategory = useCallback(
     (category: CategoryUploadDTO) => send({ type: "uploadCategory", category }),
     [send],
@@ -258,6 +267,7 @@ export function LobbyProvider({ children }: { children: ReactNode }) {
         joinLobby,
         leaveLobby,
         updateSettings,
+        kickPlayer,
         uploadCategory,
         startRound,
         swapCard,

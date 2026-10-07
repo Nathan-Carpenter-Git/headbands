@@ -8,9 +8,12 @@ import { CategoryPicker, type PickerOption } from "../components/CategoryPicker"
 import { copyText } from "../lib/clipboard";
 
 export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
-  const { myPlayerId, categories, lobbyCustomCategories, updateSettings, uploadCategory, startRound } = useLobby();
+  const { myPlayerId, categories, lobbyCustomCategories, updateSettings, uploadCategory, startRound, kickPlayer } =
+    useLobby();
   const { categories: localCategories } = useLocalCategories();
   const [copied, setCopied] = useState(false);
+  // The player the leader is confirming a kick for, if any. Set on first tap, cleared on second.
+  const [confirmingKick, setConfirmingKick] = useState<string | null>(null);
   const [roundsDraft, setRoundsDraft] = useState(String(lobby.settings.rounds));
   // Mirrors lobby.settings.rounds so we can detect external changes (the server confirming
   // a value, or another client changing it) during render, without a useEffect round-trip.
@@ -41,6 +44,12 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
     }
     updateSettings({ categoryIds: nextIds });
   }
+
+  // What the non-leader's read-only settings view shows for the category playlist.
+  const selectedCategoryNames = lobby.settings.categoryIds.map((id) => {
+    const known = categories.find((c) => c.id === id) ?? lobbyCustomCategories.find((c) => c.id === id);
+    return known?.name ?? "Custom category";
+  });
 
   return (
     <div className="page">
@@ -78,6 +87,23 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
               </span>
               <span className="player-meta">
                 <span className="player-score">{p.score}</span> {p.score === 1 ? "pt" : "pts"}
+                {me?.isLeader && p.id !== myPlayerId && (
+                  <button
+                    type="button"
+                    className={confirmingKick === p.id ? "btn btn-sm btn-danger" : "btn btn-ghost btn-sm"}
+                    onClick={() => {
+                      if (confirmingKick === p.id) {
+                        kickPlayer(p.id);
+                        setConfirmingKick(null);
+                      } else {
+                        setConfirmingKick(p.id);
+                      }
+                    }}
+                    onBlur={() => setConfirmingKick((current) => (current === p.id ? null : current))}
+                  >
+                    {confirmingKick === p.id ? "Kick them?" : "Kick"}
+                  </button>
+                )}
               </span>
             </li>
           ))}
@@ -182,10 +208,38 @@ export function LobbyStaging({ lobby }: { lobby: LobbyStateDTO }) {
       ) : (
         <div className="card">
           <div className="row-between">
-            <h2>Game mode</h2>
+            <h2>Settings</h2>
             <span className="badge badge-accent">{mode.label}</span>
           </div>
           <p className="lede">{mode.summary}</p>
+          <p className="empty-hint">The leader can change these.</p>
+          <ul className="settings-summary">
+            <li>
+              <span className="field-label">Categories</span>
+              <span>
+                {selectedCategoryNames.length === 0
+                  ? "None picked yet"
+                  : selectedCategoryNames.join(", ")}
+              </span>
+            </li>
+            <li>
+              <span className="field-label">Rounds</span>
+              <span>{lobby.settings.rounds}</span>
+            </li>
+            {lobby.settings.randomizeOrder && (
+              <li>
+                <span className="field-label">Order</span>
+                <span>Randomized</span>
+              </li>
+            )}
+            {lobby.settings.gameMode === "headbands" && (
+              <li>
+                <span className="field-label">Last player</span>
+                <span>{lobby.settings.autoRevealLast ? "Auto-revealed" : "Reveals manually"}</span>
+              </li>
+            )}
+          </ul>
+          <hr className="divider" />
           <p className="lede">Waiting for the leader to start the game…</p>
         </div>
       )}
